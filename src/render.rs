@@ -7,7 +7,7 @@ use log::{info, warn};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Configuration for browser rendering
 pub struct RenderConfig {
@@ -47,7 +47,7 @@ pub fn generate_slides(
 
     // Ensure output directory exists
     if !output_dir.exists() {
-        fs::create_dir_all(output_dir).map_err(|e| BigError::FileReadError(e))?;
+        fs::create_dir_all(output_dir).map_err(BigError::FileReadError)?;
     }
 
     // Configure browser launch options
@@ -88,7 +88,7 @@ pub fn generate_slides(
     };
 
     // Get absolute path for HTML file
-    let html_path_abs = fs::canonicalize(html_path).map_err(|e| BigError::FileReadError(e))?;
+    let html_path_abs = fs::canonicalize(html_path).map_err(BigError::FileReadError)?;
     let url = format!("file://{}", html_path_abs.to_string_lossy());
 
     info!("Opening page at URL: {}", url);
@@ -111,8 +111,54 @@ pub fn generate_slides(
             source: None,
         })?;
 
-    // Take screenshot of the first slide
-    info!("Taking screenshot of slide 1");
+    // Wait for network idle (emulating Playwright's networkidle)
+    tab.wait_for_element_with_custom_timeout("body", Duration::from_millis(config.timeout_ms))
+        .map_err(|e| BigError::BrowserError {
+            message: format!("Failed to wait for body element: {}", e),
+            source: None,
+        })?;
+
+    // Additional wait to ensure resources are loaded
+    std::thread::sleep(Duration::from_millis(500));
+
+    // Try to detect slides using the same selector as Python version
+    let slide_count = match tab.evaluate("document.querySelectorAll('body > div').length", false) {
+        Ok(result) => {
+            let count_str = format!("{:?}", result.value);
+            count_str
+                .trim_matches(|c| c == '"' || c == ' ')
+                .parse::<i64>()
+                .unwrap_or(1)
+        }
+        Err(e) => {
+            warn!(
+                "Failed to detect slides count: {}. Falling back to .slides > div selector.",
+                e
+            );
+            // Fallback to previous selector
+            match tab.evaluate("document.querySelectorAll('.slides > div').length", false) {
+                Ok(result) => {
+                    let count_str = format!("{:?}", result.value);
+                    count_str
+                        .trim_matches(|c| c == '"' || c == ' ')
+                        .parse::<i64>()
+                        .unwrap_or(1)
+                }
+                Err(_) => 1, // Default to at least one slide
+            }
+        }
+    };
+
+    info!("Loaded! Ready to render {} slides", slide_count);
+
+    // Estimate rendering time (using 0.2s per slide as in Python version)
+    let estimated_seconds = (slide_count as f64) * 0.2;
+    info!(
+        "It will probably take about {:.2} seconds to render the slides. Sit back and relax.",
+        estimated_seconds
+    );
+
+    let start_time = Instant::now();
     let get_screenshot_format = || match config.format.to_lowercase().as_str() {
         "png" => headless_chrome::protocol::cdp::Page::CaptureScreenshotFormatOption::Png,
         "jpeg" | "jpg" => headless_chrome::protocol::cdp::Page::CaptureScreenshotFormatOption::Jpeg,
@@ -122,69 +168,52 @@ pub fn generate_slides(
         }
     };
 
-    let screenshot_data = tab
-        .capture_screenshot(get_screenshot_format(), None, None, true)
-        .map_err(|e| BigError::ScreenshotError(format!("Failed to capture screenshot: {}", e)))?;
+    let mut output_files = Vec::with_capacity(slide_count as usize);
 
-    // Save screenshot to file
-    let output_file = output_dir.join(format!("{}_{:04}.{}", config.base_name, 1, config.format));
-    fs::write(&output_file, &screenshot_data).map_err(|e| BigError::FileReadError(e))?;
+    // Render all slides
+    for i in 0..slide_count {
+        // Take screenshot
+        let slide_num = i + 1;
+        let output_filename = format!("{}_{:04}.{}", config.base_name, slide_num, config.format);
+        let output_file = output_dir.join(&output_filename);
 
-    info!("Screenshot saved to {:?}", output_file);
-    let mut output_files = vec![output_file];
+        info!("Rendering {}", output_filename);
 
-    // Try to detect more slides
-    if let Ok(total_slides) =
-        tab.evaluate("document.querySelectorAll('.slides > div').length", false)
-    {
-        // Extract the number of slides
-        let count_str = format!("{:?}", total_slides.value);
-        // Parse the count from the string representation
-        let count = count_str
-            .trim_matches(|c| c == '"' || c == ' ')
-            .parse::<i64>()
-            .unwrap_or(1);
+        match tab.capture_screenshot(get_screenshot_format(), None, None, true) {
+            Ok(screenshot_data) => {
+                // Save screenshot
+                fs::write(&output_file, &screenshot_data).map_err(BigError::FileReadError)?;
 
-        info!("Detected {} slides", count);
-
-        if count > 1 {
-            // Iterate through rest of slides
-            for i in 1..count {
-                // Press right arrow key to advance to next slide
-                tab.press_key("ArrowRight")
-                    .map_err(|e| BigError::BrowserError {
-                        message: format!("Failed to press right arrow key: {}", e),
-                        source: None,
-                    })?;
-
-                // Wait a bit for transition
-                std::thread::sleep(Duration::from_millis(500));
-
-                // Take screenshot
-                info!("Taking screenshot of slide {}", i + 1);
-                match tab.capture_screenshot(get_screenshot_format(), None, None, true) {
-                    Ok(screenshot_data) => {
-                        // Save screenshot
-                        let output_file = output_dir.join(format!(
-                            "{}_{:04}.{}",
-                            config.base_name,
-                            i + 1,
-                            config.format
-                        ));
-                        fs::write(&output_file, &screenshot_data)
-                            .map_err(|e| BigError::FileReadError(e))?;
-
-                        info!("Screenshot saved to {:?}", output_file);
-                        output_files.push(output_file);
-                    }
-                    Err(e) => {
-                        // Log the error but continue with other slides
-                        warn!("Failed to capture screenshot for slide {}: {}", i + 1, e);
-                    }
-                }
+                output_files.push(output_file);
+            }
+            Err(e) => {
+                // Log the error but continue with other slides
+                warn!(
+                    "Failed to capture screenshot for slide {}: {}",
+                    slide_num, e
+                );
             }
         }
+
+        // Advance to next slide if not the last one
+        if i < slide_count - 1 {
+            tab.press_key("ArrowRight")
+                .map_err(|e| BigError::BrowserError {
+                    message: format!("Failed to press right arrow key: {}", e),
+                    source: None,
+                })?;
+
+            // Wait for transition
+            std::thread::sleep(Duration::from_millis(200));
+        }
     }
+
+    let elapsed = start_time.elapsed();
+    info!(
+        "Rendering complete. Captured {} slides in {:.2} seconds",
+        output_files.len(),
+        elapsed.as_secs_f64()
+    );
 
     Ok(output_files)
 }

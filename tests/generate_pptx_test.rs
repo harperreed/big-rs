@@ -1,8 +1,7 @@
 use image::{ImageBuffer, Rgb};
 use std::fs;
-use std::path::Path;
 use std::process::{Command, Output};
-use tempfile::{NamedTempFile, TempDir};
+use tempfile::TempDir;
 
 fn run_command(args: &[&str]) -> Output {
     Command::new("cargo")

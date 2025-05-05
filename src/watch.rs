@@ -192,7 +192,7 @@ pub fn watch_markdown(config: WatchConfig, app_config: &AppConfig) -> Result<()>
 
     // Get the directory containing the markdown file
     let watch_path = match config.markdown_path.parent() {
-        Some(parent) if parent.as_os_str().len() > 0 => parent,
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
         _ => Path::new("."), // If no parent (just a filename) or empty parent, use current directory
     };
 
@@ -209,7 +209,13 @@ pub fn watch_markdown(config: WatchConfig, app_config: &AppConfig) -> Result<()>
     debouncer
         .watcher()
         .watch(&abs_watch_path, RecursiveMode::Recursive)
-        .map_err(|e| BigError::WatchError(format!("Failed to start watching directory: {} about {:?}", e, [abs_watch_path])))?;
+        .map_err(|e| {
+            BigError::WatchError(format!(
+                "Failed to start watching directory: {} about {:?}",
+                e,
+                [abs_watch_path]
+            ))
+        })?;
 
     info!("Watching for changes in {:?}", watch_path);
     println!(
@@ -230,19 +236,16 @@ pub fn watch_markdown(config: WatchConfig, app_config: &AppConfig) -> Result<()>
                         debug!("Received event with no paths: {:?}", event);
                         return false;
                     }
-                    
+
                     // DebouncedEvent has paths (multiple) instead of path
-                    let relevant_paths = event
-                        .paths
-                        .iter()
-                        .any(|path| {
-                            let is_relevant = is_relevant_path(path, &config);
-                            if is_relevant {
-                                debug!("Detected relevant change in {:?}", path);
-                            }
-                            is_relevant
-                        });
-                    
+                    let relevant_paths = event.paths.iter().any(|path| {
+                        let is_relevant = is_relevant_path(path, &config);
+                        if is_relevant {
+                            debug!("Detected relevant change in {:?}", path);
+                        }
+                        is_relevant
+                    });
+
                     relevant_paths
                 });
 
@@ -275,14 +278,14 @@ fn is_relevant_path(path: &Path, config: &WatchConfig) -> bool {
         Ok(p) => p,
         Err(_) => return false, // If we can't resolve the path, it's not relevant
     };
-    
+
     let md_path_abs = match utils::get_absolute_path(&config.markdown_path) {
         Ok(p) => p,
         Err(_) => config.markdown_path.clone(), // Fall back to the original path
     };
 
     // Always include the main markdown file
-    if path_abs == md_path_abs || path == &config.markdown_path {
+    if path_abs == md_path_abs || path == config.markdown_path {
         return true;
     }
 

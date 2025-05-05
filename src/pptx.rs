@@ -40,7 +40,7 @@ pub fn generate_pptx(slides_dir: &Path, output_file: &Path, config: &PptxConfig)
     // Ensure parent directory for output file exists
     if let Some(parent) = output_file.parent() {
         if !parent.exists() {
-            fs::create_dir_all(parent).map_err(|e| BigError::FileReadError(e))?;
+            fs::create_dir_all(parent).map_err(BigError::FileReadError)?;
         }
     }
 
@@ -48,12 +48,11 @@ pub fn generate_pptx(slides_dir: &Path, output_file: &Path, config: &PptxConfig)
     let mut slide_paths = Vec::new();
     let glob_pattern = format!("{}/{}", slides_dir.to_string_lossy(), config.pattern);
 
-    for entry in glob::glob(&glob_pattern)
-        .map_err(|e| BigError::PptxError(format!("Invalid glob pattern: {}", e)))?
+    for entry in (glob::glob(&glob_pattern)
+        .map_err(|e| BigError::PptxError(format!("Invalid glob pattern: {}", e)))?)
+    .flatten()
     {
-        if let Ok(path) = entry {
-            slide_paths.push(path);
-        }
+        slide_paths.push(entry);
     }
 
     // Sort slide paths to ensure they're in the correct order
@@ -65,7 +64,7 @@ pub fn generate_pptx(slides_dir: &Path, output_file: &Path, config: &PptxConfig)
     }
 
     // Create a new PPTX file
-    let file = fs::File::create(output_file).map_err(|e| BigError::FileReadError(e))?;
+    let file = fs::File::create(output_file).map_err(BigError::FileReadError)?;
     let mut zip = ZipWriter::new(file);
 
     // Set slide dimensions based on aspect ratio
@@ -323,12 +322,11 @@ pub fn find_slide_images(dir: &Path, pattern: &str) -> Result<Vec<PathBuf>> {
     let glob_pattern = format!("{}/{}", dir.to_string_lossy(), pattern);
     let mut paths = Vec::new();
 
-    for entry in glob::glob(&glob_pattern)
-        .map_err(|e| BigError::PptxError(format!("Invalid glob pattern: {}", e)))?
+    for entry in (glob::glob(&glob_pattern)
+        .map_err(|e| BigError::PptxError(format!("Invalid glob pattern: {}", e)))?)
+    .flatten()
     {
-        if let Ok(path) = entry {
-            paths.push(path);
-        }
+        paths.push(entry);
     }
 
     paths.sort();

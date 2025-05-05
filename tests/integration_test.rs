@@ -1,8 +1,6 @@
 use std::fs;
-use std::io::Write;
-use std::path::Path;
 use std::process::{Command, Output};
-use tempfile::{NamedTempFile, TempDir};
+use tempfile::TempDir;
 
 fn run_command(args: &[&str]) -> Output {
     Command::new("cargo")

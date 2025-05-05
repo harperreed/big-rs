@@ -36,7 +36,7 @@ pub fn validate_directory_exists(path: &Path) -> Result<()> {
 /// Ensure a directory exists, creating it if necessary
 pub fn ensure_directory_exists(path: &Path) -> Result<()> {
     if !path.exists() {
-        std::fs::create_dir_all(path).map_err(|e| BigError::FileReadError(e))?;
+        std::fs::create_dir_all(path).map_err(BigError::FileReadError)?;
     } else if !path.is_dir() {
         return Err(BigError::ValidationError(format!(
             "Path exists but is not a directory: {:?}",

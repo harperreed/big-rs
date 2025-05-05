@@ -20,7 +20,7 @@ impl ResourceFile {
     /// The path can be either a local file path or a URL.
     pub fn new(path: &str) -> Self {
         let is_remote = path.starts_with("http://") || path.starts_with("https://");
-        
+
         let normalized_path = if !is_remote {
             // Try to get absolute path for local files
             match std::path::Path::new(path).canonicalize() {
@@ -30,7 +30,7 @@ impl ResourceFile {
         } else {
             path.to_string()
         };
-        
+
         Self {
             path: normalized_path,
             is_remote,
@@ -56,7 +56,7 @@ impl ResourceFile {
         let client = Client::builder()
             .timeout(Duration::from_secs(10))
             .build()
-            .map_err(|e| BigError::FetchError(e))?;
+            .map_err(BigError::FetchError)?;
 
         // Try up to 3 times with increasing backoff
         let mut retry_delay = 1000; // Start with 1 second
@@ -66,7 +66,7 @@ impl ResourceFile {
             match client.get(&self.path).send() {
                 Ok(response) => {
                     if response.status().is_success() {
-                        return response.text().map_err(|e| BigError::FetchError(e));
+                        return response.text().map_err(BigError::FetchError);
                     } else {
                         let status = response.status();
                         last_error =
@@ -100,7 +100,7 @@ impl ResourceFile {
             ));
         }
 
-        fs::read_to_string(&self.path).map_err(|e| BigError::FileReadError(e))
+        fs::read_to_string(&self.path).map_err(BigError::FileReadError)
     }
 
     /// Generate HTML tag for the resource, either embedding or linking the content.
