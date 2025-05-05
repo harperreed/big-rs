@@ -1,3 +1,6 @@
+// ABOUTME: Main entry point for the big-slides program.
+// ABOUTME: Provides CLI interface and executes commands from the library.
+
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -22,18 +25,27 @@ enum Commands {
 fn main() {
     let cli = Cli::parse();
 
-    match &cli.command {
+    let result = match &cli.command {
         Some(Commands::GenerateHtml) => {
-            println!("generate-html: unimplemented");
+            println!("Executing generate-html command...");
+            big::generate_html()
         }
         Some(Commands::GenerateSlides) => {
-            println!("generate-slides: unimplemented");
+            println!("Executing generate-slides command...");
+            big::generate_slides()
         }
         Some(Commands::GeneratePptx) => {
-            println!("generate-pptx: unimplemented");
+            println!("Executing generate-pptx command...");
+            big::generate_pptx()
         }
         None => {
             println!("No command specified. Use --help for usage information.");
+            Ok(())
         }
+    };
+
+    if let Err(e) = result {
+        eprintln!("Error: {}", e);
+        std::process::exit(1);
     }
 }
