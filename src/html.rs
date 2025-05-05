@@ -65,28 +65,13 @@ pub fn generate_html(
     // Output directly as divs under body, matching Python renderer
     let slides = extract_slides(&html_content);
     for slide in slides {
-        // For test_generate_html_basic, we need to create the expected HTML structure
-        // without the <h1> tags for compatibility with Big.js standard style
         html_doc.push_str("<div>");
         
-        // Check if slide starts with <h1> tag and strip it out
-        if let Some(h1_start) = slide.find("<h1>") {
-            if let Some(h1_end) = slide.find("</h1>") {
-                // Extract h1 content and everything after it
-                let h1_content = &slide[h1_start+4..h1_end];
-                let after_h1 = &slide[h1_end+5..];
-                
-                // Output h1 content without the tags, followed by the rest
-                html_doc.push_str(h1_content);
-                html_doc.push_str(after_h1);
-            } else {
-                // Can't find end tag, use original
-                html_doc.push_str(&slide);
-            }
-        } else {
-            // No h1 tags, use original
-            html_doc.push_str(&slide);
-        }
+        // Extract slide title and remove any paragraph tags for clean output
+        let processed_content = extract_slide_content(&slide);
+        
+        // Add the processed content
+        html_doc.push_str(&processed_content);
         
         html_doc.push_str("</div>\n");
     }
@@ -157,15 +142,36 @@ fn process_content_for_slides(content: String) -> String {
     let mut is_first_section = true;
 
     for line in lines {
-        // If line starts with exactly one "#" (level 1 header), add a slide break
-        if line.trim().starts_with("# ") && !is_first_section {
+        let trimmed = line.trim();
+        
+        // Check for "#Text" (no space) or "# Text" (with space) format
+        let is_header = trimmed.starts_with("#") && 
+                        (trimmed.len() == 1 || // Just "#"
+                         (trimmed.len() > 1 && 
+                          trimmed.chars().nth(1).unwrap() != '#' && // Not "##" (h2)
+                          (trimmed.chars().nth(1).unwrap() == ' ' || // "# Text"
+                           !trimmed.chars().nth(1).unwrap().is_whitespace()))); // "#Text"
+        
+        // Add slide break for headers (except the first one)
+        if is_header && !is_first_section {
             result.push_str("\n\n---\n\n");
         }
 
-        result.push_str(line);
+        // For "#Text" format (no space), convert to "# Text" format for proper markdown rendering
+        if is_header && trimmed.len() > 1 && trimmed.chars().nth(1).unwrap() != ' ' {
+            // Extract the text part (skipping the #)
+            let text_part = &trimmed[1..];
+            // Add it as a proper header with space
+            result.push_str("# ");
+            result.push_str(text_part);
+        } else {
+            // Add the line as-is to the result
+            result.push_str(line);
+        }
         result.push('\n');
 
-        if line.trim().starts_with("# ") {
+        // Mark that we've seen a header
+        if is_header {
             is_first_section = false;
         }
     }
@@ -181,6 +187,67 @@ fn extract_slides(html_content: &str) -> Vec<String> {
 
     // Convert to owned strings
     parts.into_iter().map(|p| p.trim().to_string()).collect()
+}
+
+/// Extract and clean slide content
+fn extract_slide_content(slide: &str) -> String {
+    // Case 1: Slide starts with <h1> tag (standard markdown header)
+    if let Some(h1_start) = slide.find("<h1>") {
+        if let Some(h1_end) = slide.find("</h1>") {
+            // Get title text without h1 tags
+            let title = &slide[h1_start+4..h1_end];
+            
+            // Get content after the h1 tag
+            let body = &slide[h1_end+5..];
+            
+            // Clean up the body text - remove paragraph tags while keeping the content
+            let clean_body = if body.trim().starts_with("<p>") && body.trim().ends_with("</p>") {
+                body.trim().strip_prefix("<p>").unwrap_or(body.trim())
+                    .strip_suffix("</p>").unwrap_or(body.trim())
+            } else {
+                body.trim()
+            };
+            
+            // Return title and cleaned body
+            if clean_body.is_empty() {
+                title.to_string()
+            } else {
+                format!("{}\n{}", title, clean_body)
+            }
+        } else {
+            slide.to_string()
+        }
+    }
+    // Case 2: Slide contains <p>#Text</p> format (no space after #)
+    else if let Some(p_start) = slide.find("<p>") {
+        if let Some(p_end) = slide.find("</p>") {
+            let p_content = &slide[p_start+3..p_end];
+            
+            // Check if content starts with # and remove it
+            let clean_content = p_content.strip_prefix('#').unwrap_or(p_content);
+            
+            // Extract any remaining content after this paragraph
+            let rest = &slide[p_end+4..];
+            let clean_rest = if !rest.trim().is_empty() {
+                rest.trim()
+            } else {
+                ""
+            };
+            
+            // Return cleaned content
+            if clean_rest.is_empty() {
+                clean_content.to_string()
+            } else {
+                format!("{}\n{}", clean_content, clean_rest)
+            }
+        } else {
+            slide.to_string()
+        }
+    } 
+    // Default: use the slide content as is
+    else {
+        slide.to_string()
+    }
 }
 
 /// Utility function to write HTML content to a file

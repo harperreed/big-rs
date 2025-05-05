@@ -40,8 +40,8 @@ fn test_generate_html_basic() {
     let html = result.unwrap();
 
     // Check that the HTML includes the markdown content without h1 tags
-    // The div should directly contain the text "Test Slide" followed by the paragraph
-    assert!(html.contains("<div>Test Slide\n<p>This is a test slide.</p></div>"));
+    // The div should directly contain the text "Test Slide" followed by the content (no <p> tags)
+    assert!(html.contains("<div>Test Slide\nThis is a test slide.</div>"));
 
     // Check that the HTML has the proper structure
     assert!(html.contains("<!DOCTYPE html>"));
@@ -287,4 +287,114 @@ fn test_default_css_js_config_values() {
         html.contains(&expected_js_link),
         "HTML should contain default JS script tag"
     );
+}
+
+#[test]
+fn test_header_format_with_space() {
+    // Test the "# Header" format (with space)
+    let markdown_content = "# Test Slide\n\nThis is a test slide.";
+    let markdown_file = create_temp_markdown_file(markdown_content);
+
+    let result = html::generate_html(
+        &markdown_file.path().to_path_buf(),
+        &[],
+        &[],
+        true, // embed resources
+    );
+
+    assert!(result.is_ok());
+    let html = result.unwrap();
+
+    // Check that the HTML includes the markdown content without h1 tags
+    // The div should directly contain the text "Test Slide" followed by the content (no <p> tags)
+    assert!(html.contains("<div>Test Slide\nThis is a test slide.</div>"), 
+        "HTML should contain slide content without the h1 tags");
+}
+
+#[test]
+fn test_header_format_without_space() {
+    // Test the "#Header" format (no space)
+    let markdown_content = "#Test Slide\n\nThis is a test slide.";
+    let markdown_file = create_temp_markdown_file(markdown_content);
+
+    let result = html::generate_html(
+        &markdown_file.path().to_path_buf(),
+        &[],
+        &[],
+        true, // embed resources
+    );
+
+    assert!(result.is_ok());
+    let html = result.unwrap();
+
+    // The content should be properly processed to handle the no-space format
+    // and should NOT contain the # character in the output
+    assert!(html.contains("<div>Test Slide\nThis is a test slide.</div>"), 
+        "HTML should contain slide content without the # character");
+    assert!(!html.contains("<div>#Test Slide"), 
+        "HTML should not contain the # character in the output");
+}
+
+#[test]
+fn test_header_format_complex_case() {
+    // Test more complex header cases with mixed content
+    let markdown_content = "# First Slide\n\nStandard slide with space after #.\n\n\
+                           #Second Slide\n\nSlide with no space after #.\n\n\
+                           #Special Characters: !@#$%^&*()_+\n\nSlide with special characters.\n\n\
+                           #   Extra Spaces\n\nSlide with multiple spaces after #.";
+    let markdown_file = create_temp_markdown_file(markdown_content);
+
+    let result = html::generate_html(
+        &markdown_file.path().to_path_buf(),
+        &[],
+        &[],
+        true, // embed resources
+    );
+
+    assert!(result.is_ok());
+    let html = result.unwrap();
+
+    
+    // Check that all slides are properly processed
+    assert!(html.contains("<div>First Slide"), 
+        "First slide should be included with proper format");
+    assert!(html.contains("<div>Second Slide"), 
+        "Second slide should be included with proper format");
+    assert!(html.contains("<div>Special Characters: !@#$%^&amp;*()_+"), 
+        "Slide with special characters should be included properly");
+    assert!(html.contains("<div>Extra Spaces"), 
+        "Slide with extra spaces should be included properly");
+    
+    // Ensure no slides contain the # character in their title
+    assert!(!html.contains("<div>#"), 
+        "HTML should not contain the # character in any slide title");
+}
+
+#[test]
+fn test_header_format_multiple_slides() {
+    // Test multiple slides with mixed header formats
+    let markdown_content = "# Slide One\n\nContent for slide one.\n\n#Slide Two\n\nContent for slide two.";
+    let markdown_file = create_temp_markdown_file(markdown_content);
+
+    let result = html::generate_html(
+        &markdown_file.path().to_path_buf(),
+        &[],
+        &[],
+        true, // embed resources
+    );
+
+    assert!(result.is_ok());
+    let html = result.unwrap();
+
+    // Check for first slide content without h1 tags
+    assert!(html.contains("<div>Slide One\nContent for slide one.</div>"), 
+        "HTML should contain first slide content correctly");
+    
+    // Check for second slide content without h1 tags and without # character
+    assert!(html.contains("<div>Slide Two\nContent for slide two.</div>"), 
+        "HTML should contain second slide content correctly without # character");
+    
+    // Make sure we don't have the # character in any of the output
+    assert!(!html.contains("<div>#Slide"), 
+        "HTML should not contain the # character in any slide");
 }
