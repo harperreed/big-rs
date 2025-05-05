@@ -191,13 +191,25 @@ pub fn watch_markdown(config: WatchConfig, app_config: &AppConfig) -> Result<()>
         .map_err(|e| BigError::WatchError(format!("Failed to create file watcher: {}", e)))?;
 
     // Get the directory containing the markdown file
-    let watch_path = config.markdown_path.parent().unwrap_or(Path::new("."));
+    let watch_path = match config.markdown_path.parent() {
+        Some(parent) if parent.as_os_str().len() > 0 => parent,
+        _ => Path::new("."), // If no parent (just a filename) or empty parent, use current directory
+    };
+
+    // Ensure we're using an absolute path for watching
+    let abs_watch_path = if watch_path.is_absolute() {
+        watch_path.to_path_buf()
+    } else {
+        utils::get_absolute_path(watch_path)?
+    };
+
+    debug!("Watching absolute path: {:?}", abs_watch_path);
 
     // Add a path to be watched
     debouncer
         .watcher()
-        .watch(watch_path, RecursiveMode::Recursive)
-        .map_err(|e| BigError::WatchError(format!("Failed to start watching directory: {}", e)))?;
+        .watch(&abs_watch_path, RecursiveMode::Recursive)
+        .map_err(|e| BigError::WatchError(format!("Failed to start watching directory: {} about {:?}", e, [abs_watch_path])))?;
 
     info!("Watching for changes in {:?}", watch_path);
     println!(
@@ -214,14 +226,23 @@ pub fn watch_markdown(config: WatchConfig, app_config: &AppConfig) -> Result<()>
             Ok(events) => {
                 // Filter out events for the markdown file or related resources
                 let relevant_changes = events.iter().any(|event| {
+                    if event.paths.is_empty() {
+                        debug!("Received event with no paths: {:?}", event);
+                        return false;
+                    }
+                    
                     // DebouncedEvent has paths (multiple) instead of path
                     let relevant_paths = event
                         .paths
                         .iter()
-                        .any(|path| is_relevant_path(path, &config));
-                    if relevant_paths {
-                        debug!("Detected change in {:?}", event.paths);
-                    }
+                        .any(|path| {
+                            let is_relevant = is_relevant_path(path, &config);
+                            if is_relevant {
+                                debug!("Detected relevant change in {:?}", path);
+                            }
+                            is_relevant
+                        });
+                    
                     relevant_paths
                 });
 
@@ -249,23 +270,41 @@ pub fn watch_markdown(config: WatchConfig, app_config: &AppConfig) -> Result<()>
 
 /// Checks if a path is relevant to watch (markdown file or resource)
 fn is_relevant_path(path: &Path, config: &WatchConfig) -> bool {
+    // Try to get absolute paths for comparison
+    let path_abs = match utils::get_absolute_path(path) {
+        Ok(p) => p,
+        Err(_) => return false, // If we can't resolve the path, it's not relevant
+    };
+    
+    let md_path_abs = match utils::get_absolute_path(&config.markdown_path) {
+        Ok(p) => p,
+        Err(_) => config.markdown_path.clone(), // Fall back to the original path
+    };
+
     // Always include the main markdown file
-    if path == config.markdown_path {
+    if path_abs == md_path_abs || path == &config.markdown_path {
         return true;
     }
 
     // Check if it's a local CSS or JS file
     let path_str = path.to_string_lossy().to_string();
+    let path_abs_str = path_abs.to_string_lossy().to_string();
 
     for css in &config.css_files {
-        if !css.is_remote && css.path == path_str {
-            return true;
+        if !css.is_remote {
+            // Try both the original path and absolute path
+            if css.path == path_str || css.path == path_abs_str {
+                return true;
+            }
         }
     }
 
     for js in &config.js_files {
-        if !js.is_remote && js.path == path_str {
-            return true;
+        if !js.is_remote {
+            // Try both the original path and absolute path
+            if js.path == path_str || js.path == path_abs_str {
+                return true;
+            }
         }
     }
 

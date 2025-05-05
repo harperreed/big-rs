@@ -20,8 +20,19 @@ impl ResourceFile {
     /// The path can be either a local file path or a URL.
     pub fn new(path: &str) -> Self {
         let is_remote = path.starts_with("http://") || path.starts_with("https://");
+        
+        let normalized_path = if !is_remote {
+            // Try to get absolute path for local files
+            match std::path::Path::new(path).canonicalize() {
+                Ok(abs_path) => abs_path.to_string_lossy().to_string(),
+                Err(_) => path.to_string(), // Fallback to original path if canonicalization fails
+            }
+        } else {
+            path.to_string()
+        };
+        
         Self {
-            path: path.to_string(),
+            path: normalized_path,
             is_remote,
         }
     }
