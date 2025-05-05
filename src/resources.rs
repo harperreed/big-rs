@@ -96,8 +96,8 @@ impl ResourceFile {
     /// - tag_type: The type of tag to generate ("css" or "js")
     /// - embed: Whether to embed the content in the tag or link to it
     pub fn tag(&self, tag_type: &str, embed: bool) -> Result<String> {
-        if self.is_remote || !embed {
-            // For remote resources or when explicitly requesting linking, just create a link
+        if !embed {
+            // When explicitly requesting linking, create a link
             Ok(match tag_type {
                 "css" => format!(r#"<link rel="stylesheet" href="{}">"#, self.path),
                 "js" => format!(r#"<script src="{}"></script>"#, self.path),
@@ -109,7 +109,7 @@ impl ResourceFile {
                 }
             })
         } else {
-            // For local resources with embedding, include the content directly
+            // For embedding (both local and remote resources), include the content directly
             let content = self.content()?;
             Ok(match tag_type {
                 "css" => format!(r#"<style>{}</style>"#, content),

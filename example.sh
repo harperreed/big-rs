@@ -19,8 +19,8 @@ MARKDOWN_FILE="example-preso/slides.md"
 HTML_OUTPUT="example-preso/output/slides.html"
 SLIDES_DIR="example-preso/output/slides"
 PPTX_OUTPUT="example-preso/output/presentation.pptx"
-CSS_FILE="example-preso/big-theme.css"
-JS_FILE="example-preso/big-navigation.js"
+# CSS_FILE="example-preso/big-theme.css"
+# JS_FILE="example-preso/big-navigation.js"
 
 # Create output directory
 mkdir -p "example-preso/output/slides"
@@ -29,8 +29,8 @@ echo -e "${BLUE}=== Big-Slides Example Lifecycle ===${NC}\n"
 
 # Step 1: Generate HTML from Markdown
 echo -e "${YELLOW}Step 1: Generating HTML from Markdown${NC}"
-echo -e "Command: ./target/debug/big generate-html -i ${MARKDOWN_FILE} -o ${HTML_OUTPUT} --css ${CSS_FILE} --js ${JS_FILE}"
-./target/debug/big generate-html -i ${MARKDOWN_FILE} -o ${HTML_OUTPUT} --css ${CSS_FILE} --js ${JS_FILE}
+echo -e "Command: ./target/debug/big generate-html -i ${MARKDOWN_FILE} -o ${HTML_OUTPUT}"
+./target/debug/big generate-html -i ${MARKDOWN_FILE} -o ${HTML_OUTPUT}
 echo -e "${GREEN}✓ HTML generated successfully with custom CSS and JS${NC}\n"
 
 # Step 2: Generate slides (images) from HTML
@@ -45,15 +45,8 @@ echo -e "Command: ./target/debug/big generate-pptx -i ${SLIDES_DIR} -o ${PPTX_OU
 ./target/debug/big generate-pptx -i ${SLIDES_DIR} -o ${PPTX_OUTPUT}
 echo -e "${GREEN}✓ PPTX generated successfully${NC}\n"
 
-# Step 4: Demonstrate watch mode (with optional web server)
-echo -e "${YELLOW}Step 4: Watch mode demonstration${NC}"
-echo -e "Command: ./target/debug/big watch -i ${MARKDOWN_FILE} -o ${HTML_OUTPUT} --css ${CSS_FILE} --js ${JS_FILE} --slides-dir ${SLIDES_DIR} --pptx-output ${PPTX_OUTPUT} --serve"
-echo -e "${BLUE}Watch mode will monitor for changes and regenerate outputs automatically.${NC}"
-echo -e "${BLUE}It also starts a web server so you can view the slides at http://localhost:8080${NC}"
-echo -e "${BLUE}To try this mode, run:${NC}"
-echo -e "  ${GREEN}./target/debug/big watch -i ${MARKDOWN_FILE} -o ${HTML_OUTPUT} --css ${CSS_FILE} --js ${JS_FILE} --slides-dir ${SLIDES_DIR} --pptx-output ${PPTX_OUTPUT} --serve${NC}"
-echo -e "${BLUE}Then edit the markdown file (${MARKDOWN_FILE}) to see auto-regeneration in action.${NC}"
-echo -e "${BLUE}Press Ctrl+C to stop the watch mode when running it.${NC}\n"
+# Note: For detailed watch mode instructions, see WATCH_MODE.md
+echo -e "${BLUE}Note: See WATCH_MODE.md for watch mode instructions${NC}\n"
 
 # Step 5: Adding style notes
 echo -e "${YELLOW}Step 5: Customizing your presentation${NC}"

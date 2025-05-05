@@ -26,16 +26,22 @@ pub fn generate_html(
     let markdown_content =
         fs::read_to_string(markdown_path).map_err(|e| BigError::FileReadError(e))?;
 
+    // Parse frontmatter and content
+    let (title, _author, _date, content) = parse_frontmatter(&markdown_content);
+    
+    // Process content to handle "#" headers as slide breaks
+    let processed_content = process_content_for_slides(content);
+
     // Convert markdown to HTML
     let options = ComrakOptions::default();
-    let html_content = markdown_to_html(&markdown_content, &options);
+    let html_content = markdown_to_html(&processed_content, &options);
 
     // Build the full HTML document
     let mut html_doc = String::from("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n");
     html_doc.push_str("<meta charset=\"UTF-8\">\n");
     html_doc
-        .push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n");
-    html_doc.push_str("<title>Presentation</title>\n");
+        .push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0\">\n");
+    html_doc.push_str(&format!("<title>{}</title>\n", title));
 
     // Add CSS
     for css in css_files {
@@ -56,18 +62,13 @@ pub fn generate_html(
 
     html_doc.push_str("</head>\n<body>\n");
 
-    // Wrap content in div for slides
-    html_doc.push_str("<div class=\"slides\">\n");
-
     // Process raw HTML to split into slides
-    let slides: Vec<&str> = html_content.split("<hr />").collect();
+    let slides = extract_slides(&html_content);
     for slide in slides {
-        html_doc.push_str("<div>\n");
-        html_doc.push_str(slide);
-        html_doc.push_str("\n</div>\n");
+        html_doc.push_str("<div>");
+        html_doc.push_str(&slide);
+        html_doc.push_str("</div>\n");
     }
-
-    html_doc.push_str("</div>\n");
 
     // Add JavaScript
     for js in js_files {
@@ -88,6 +89,76 @@ pub fn generate_html(
     html_doc.push_str("</body>\n</html>");
 
     Ok(html_doc)
+}
+
+/// Parse frontmatter in the format: % Title\n% Author\n% Date
+fn parse_frontmatter(content: &str) -> (String, String, String, String) {
+    let lines: Vec<&str> = content.lines().collect();
+    
+    // Default values
+    let mut title = "Presentation".to_string();
+    let mut author = "".to_string();
+    let mut date = "".to_string();
+    
+    // Check if we have frontmatter
+    if lines.len() >= 3 && lines[0].starts_with("% ") {
+        title = lines[0].trim_start_matches("% ").trim().to_string();
+        if lines.len() >= 4 && lines[1].starts_with("% ") {
+            author = lines[1].trim_start_matches("% ").trim().to_string();
+            if lines[2].starts_with("% ") {
+                date = lines[2].trim_start_matches("% ").trim().to_string();
+                
+                // Find the first empty line after frontmatter
+                let mut start_idx = 3;
+                while start_idx < lines.len() && !lines[start_idx].trim().is_empty() {
+                    start_idx += 1;
+                }
+                start_idx = std::cmp::min(start_idx + 1, lines.len());
+                
+                // Return the rest of the content
+                return (title, author, date, lines[start_idx..].join("\n"));
+            }
+        }
+    }
+    
+    // If we didn't find frontmatter, return the original content
+    (title, author, date, content.to_string())
+}
+
+/// Process content to convert "#" headers to slide breaks
+fn process_content_for_slides(content: String) -> String {
+    // Replace "#" that are not part of headings with "!--HASH--!"
+    let content = content.replace("\\#", "!--HASH--!");
+    
+    // Split by "#" and rejoin with "---\n" (markdown horizontal rule) as separator
+    let parts: Vec<&str> = content.split('#').collect();
+    if parts.is_empty() {
+        return content;
+    }
+    
+    // First part may be empty if content starts with "#"
+    let first = parts[0].trim();
+    let mut result = if first.is_empty() { String::new() } else { format!("{}\n\n", first) };
+    
+    // Join the rest with horizontal rules
+    for part in parts.iter().skip(1) {
+        if !result.is_empty() {
+            result.push_str("\n\n---\n\n");
+        }
+        result.push_str(part.trim());
+    }
+    
+    // Restore any escaped hashes
+    result.replace("!--HASH--!", "#")
+}
+
+/// Extract individual slides from the HTML content
+fn extract_slides(html_content: &str) -> Vec<String> {
+    // Split by horizontal rule
+    let parts: Vec<&str> = html_content.split("<hr />").collect();
+    
+    // Convert to owned strings
+    parts.into_iter().map(|p| p.trim().to_string()).collect()
 }
 
 /// Utility function to write HTML content to a file
