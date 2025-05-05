@@ -18,7 +18,7 @@ enum Commands {
     GenerateHtml(GenerateHtmlArgs),
     
     /// Generate slides (images) from HTML
-    GenerateSlides,
+    GenerateSlides(GenerateSlidesArgs),
     
     /// Generate PPTX from slides
     GeneratePptx,
@@ -47,7 +47,37 @@ struct GenerateHtmlArgs {
     mode: String,
 }
 
+#[derive(Args)]
+struct GenerateSlidesArgs {
+    /// Path to the HTML file to render
+    #[arg(short, long)]
+    input: PathBuf,
+
+    /// Directory to output slide images
+    #[arg(short, long)]
+    output_dir: PathBuf,
+
+    /// Base filename for slides (will be appended with slide number)
+    #[arg(long, default_value = "slide")]
+    base_name: String,
+
+    /// Format for the slide images (png, jpeg)
+    #[arg(long, default_value = "png")]
+    format: String,
+
+    /// Width of the slides in pixels
+    #[arg(long, default_value = "1280")]
+    width: u32,
+
+    /// Height of the slides in pixels
+    #[arg(long, default_value = "720")]
+    height: u32,
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize logger
+    env_logger::init();
+    
     let cli = Cli::parse();
 
     let result = match &cli.command {
@@ -74,9 +104,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("HTML generated successfully: {:?}", args.output);
             Ok(())
         }
-        Some(Commands::GenerateSlides) => {
+        Some(Commands::GenerateSlides(args)) => {
             println!("Executing generate-slides command...");
-            big::generate_slides()
+            
+            // Create output directory if it doesn't exist
+            if !args.output_dir.exists() {
+                fs::create_dir_all(&args.output_dir)
+                    .map_err(|e| anyhow::anyhow!("Failed to create output directory: {}", e))?;
+            }
+            
+            // Generate slides (screenshots)
+            big::generate_slides(
+                &args.input,
+                &args.output_dir,
+                &args.base_name,
+                &args.format,
+                args.width,
+                args.height,
+            )?;
+            
+            println!("Slides generated successfully: {:?}", args.output_dir);
+            Ok(())
         }
         Some(Commands::GeneratePptx) => {
             println!("Executing generate-pptx command...");

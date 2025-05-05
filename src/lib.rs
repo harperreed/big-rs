@@ -4,7 +4,7 @@
 use anyhow::{Context, Result};
 use comrak::{markdown_to_html, ComrakOptions};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 #[cfg(test)]
@@ -119,9 +119,108 @@ pub fn generate_html(
 }
 
 /// Generate slides (images) from HTML
-pub fn generate_slides() -> Result<()> {
-    // Placeholder for slides generation logic
-    Ok(())
+pub fn generate_slides(
+    html_path: &Path,
+    output_dir: &Path,
+    base_name: &str,
+    format: &str,
+    width: u32,
+    height: u32,
+) -> Result<Vec<PathBuf>> {
+    use headless_chrome::{Browser, LaunchOptions};
+    use log::info;
+    use std::time::Duration;
+    
+    info!("Launching headless browser");
+    
+    // Launch headless Chrome browser
+    let browser = Browser::new(
+        LaunchOptions::default_builder()
+            .window_size(Some((width, height)))
+            .headless(true)
+            .build()
+            .map_err(|e| anyhow::anyhow!("Failed to build Chrome: {}", e))?,
+    )
+    .map_err(|e| anyhow::anyhow!("Failed to launch Chrome: {}", e))?;
+    
+    // Get the HTML file URL
+    let html_path_abs = fs::canonicalize(html_path)
+        .with_context(|| format!("Failed to get absolute path for {:?}", html_path))?;
+    let url = format!("file://{}", html_path_abs.to_string_lossy());
+    
+    info!("Opening page at URL: {}", url);
+    
+    // Create a new tab and navigate to the HTML file
+    let tab = browser.new_tab()
+        .map_err(|e| anyhow::anyhow!("Failed to create new tab: {}", e))?;
+    
+    tab.navigate_to(&url)
+        .map_err(|e| anyhow::anyhow!("Failed to navigate to HTML: {}", e))?;
+    
+    // Wait for page to load
+    tab.wait_until_navigated()
+        .map_err(|e| anyhow::anyhow!("Navigation failed: {}", e))?;
+    
+    // Take screenshot of the first slide
+    info!("Taking screenshot of slide 1");
+    let screenshot_data = tab.capture_screenshot(
+        headless_chrome::protocol::cdp::Page::CaptureScreenshotFormatOption::Png,
+        None,
+        None,
+        true
+    )
+    .map_err(|e| anyhow::anyhow!("Failed to capture screenshot: {}", e))?;
+    
+    // Save screenshot to file
+    let output_file = output_dir.join(format!("{}_0001.{}", base_name, format));
+    fs::write(&output_file, &screenshot_data)
+        .with_context(|| format!("Failed to write screenshot to {:?}", output_file))?;
+    
+    info!("Screenshot saved to {:?}", output_file);
+    let mut output_files = vec![output_file];
+    
+    // Try to detect more slides
+    if let Ok(total_slides) = tab.evaluate("document.querySelectorAll('.slides > *').length", false) {
+        // The RemoteObject contains the slides count as a number
+        let count_str = format!("{:?}", total_slides.value);
+        // Parse the count from debug string representation
+        let count = count_str.trim_matches(|c| c == '"' || c == ' ')
+            .parse::<i64>()
+            .unwrap_or(1);
+        info!("Detected {} slides", count);
+        
+        if count > 1 {
+            // Iterate through rest of slides
+            for i in 1..count {
+                // Press right arrow key to advance to next slide
+                tab.press_key("ArrowRight")
+                    .map_err(|e| anyhow::anyhow!("Failed to press right arrow key: {}", e))?;
+                
+                // Wait a bit for transition
+                std::thread::sleep(Duration::from_millis(500));
+                
+                // Take screenshot
+                info!("Taking screenshot of slide {}", i + 1);
+                let screenshot_data = tab.capture_screenshot(
+                    headless_chrome::protocol::cdp::Page::CaptureScreenshotFormatOption::Png,
+                    None,
+                    None,
+                    true
+                )
+                .map_err(|e| anyhow::anyhow!("Failed to capture screenshot: {}", e))?;
+                
+                // Save screenshot
+                let output_file = output_dir.join(format!("{}_{:04}.{}", base_name, i + 1, format));
+                fs::write(&output_file, &screenshot_data)
+                    .with_context(|| format!("Failed to write screenshot to {:?}", output_file))?;
+                
+                info!("Screenshot saved to {:?}", output_file);
+                output_files.push(output_file);
+            }
+        }
+    }
+    
+    Ok(output_files)
 }
 
 /// Generate PPTX from slides

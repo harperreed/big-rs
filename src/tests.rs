@@ -1,6 +1,6 @@
 use super::*;
 use std::io::Write;
-use tempfile::NamedTempFile;
+use tempfile::{NamedTempFile, TempDir};
 
 fn create_temp_markdown_file(content: &str) -> NamedTempFile {
     let mut file = NamedTempFile::new().expect("Failed to create temp file");
@@ -9,6 +9,12 @@ fn create_temp_markdown_file(content: &str) -> NamedTempFile {
 }
 
 fn create_temp_resource_file(content: &str) -> NamedTempFile {
+    let mut file = NamedTempFile::new().expect("Failed to create temp file");
+    file.write_all(content.as_bytes()).expect("Failed to write to temp file");
+    file
+}
+
+fn create_temp_html_file(content: &str) -> NamedTempFile {
     let mut file = NamedTempFile::new().expect("Failed to create temp file");
     file.write_all(content.as_bytes()).expect("Failed to write to temp file");
     file
@@ -95,4 +101,55 @@ fn test_resource_file_remote() {
     let resource = ResourceFile::new("https://example.com/script.js");
     let tag = resource.tag("js");
     assert_eq!(tag, r#"<script src="https://example.com/script.js"></script>"#);
+}
+
+#[test]
+#[ignore] // Ignore by default as it requires Chrome to be installed
+fn test_generate_slides_basic() {
+    // Create a simple HTML file with one slide
+    let html_content = r#"<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Slide</title>
+    <style>
+        .slides > div {
+            width: 100%;
+            height: 100%;
+            background-color: white;
+            color: black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="slides">
+        <div>
+            <h1>Hello Slide</h1>
+        </div>
+    </div>
+</body>
+</html>"#;
+    
+    let html_file = create_temp_html_file(html_content);
+    let output_dir = TempDir::new().expect("Failed to create temp dir");
+    
+    // Generate slides
+    let result = generate_slides(
+        &html_file.path().to_path_buf(),
+        &output_dir.path().to_path_buf(),
+        "test",
+        "png",
+        800,
+        600,
+    );
+    
+    assert!(result.is_ok(), "Failed to generate slides: {:?}", result.err());
+    
+    let output_files = result.unwrap();
+    assert_eq!(output_files.len(), 1, "Should generate 1 slide");
+    
+    // Check that the file exists
+    assert!(output_files[0].exists(), "Output file should exist");
 }
