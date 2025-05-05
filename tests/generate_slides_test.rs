@@ -108,7 +108,7 @@ fn test_generate_slides_command() {
         .collect();
 
     assert!(!slide_files.is_empty(), "No slide images were created");
-    
+
     // Note: In a real headless browser environment with JavaScript, we would expect 3 slides
     // But in the basic test, we'll just check that at least one was created
 }
