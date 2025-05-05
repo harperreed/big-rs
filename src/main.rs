@@ -229,7 +229,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Execute the generate-html command
-fn generate_html(args: &GenerateHtmlArgs, _config: &big::Config) -> BigResult<()> {
+fn generate_html(args: &GenerateHtmlArgs, config: &big::Config) -> BigResult<()> {
     info!("Executing generate-html command...");
 
     // Validate input file exists
@@ -242,28 +242,42 @@ fn generate_html(args: &GenerateHtmlArgs, _config: &big::Config) -> BigResult<()
     let embed_resources = args.mode.to_lowercase() != "link";
 
     // Convert CSS files to ResourceFile structs
-    let css_files: Vec<big::ResourceFile> = args
-        .css
-        .as_ref()
-        .map(|files| {
+    let css_files: Vec<big::ResourceFile> = match args.css.as_ref() {
+        Some(files) if !files.is_empty() => {
+            // User-specified CSS files
             files
                 .iter()
                 .map(|path| big::ResourceFile::new(path))
                 .collect()
-        })
-        .unwrap_or_default();
+        }
+        _ => {
+            // No CSS specified, use default
+            info!(
+                "No CSS files specified, using default CSS: {}",
+                config.default_css
+            );
+            vec![big::ResourceFile::new(&config.default_css)]
+        }
+    };
 
     // Convert JS files to ResourceFile structs
-    let js_files: Vec<big::ResourceFile> = args
-        .js
-        .as_ref()
-        .map(|files| {
+    let js_files: Vec<big::ResourceFile> = match args.js.as_ref() {
+        Some(files) if !files.is_empty() => {
+            // User-specified JS files
             files
                 .iter()
                 .map(|path| big::ResourceFile::new(path))
                 .collect()
-        })
-        .unwrap_or_default();
+        }
+        _ => {
+            // No JS specified, use default
+            info!(
+                "No JavaScript files specified, using default JS: {}",
+                config.default_js
+            );
+            vec![big::ResourceFile::new(&config.default_js)]
+        }
+    };
 
     // Generate HTML content
     let html_content =
@@ -357,28 +371,42 @@ fn watch(args: &WatchArgs, config: &big::Config) -> BigResult<()> {
     let embed_resources = args.mode.to_lowercase() != "link";
 
     // Convert CSS files to ResourceFile structs
-    let css_files: Vec<big::ResourceFile> = args
-        .css
-        .as_ref()
-        .map(|files| {
+    let css_files: Vec<big::ResourceFile> = match args.css.as_ref() {
+        Some(files) if !files.is_empty() => {
+            // User-specified CSS files
             files
                 .iter()
                 .map(|path| big::ResourceFile::new(path))
                 .collect()
-        })
-        .unwrap_or_default();
+        }
+        _ => {
+            // No CSS specified, use default
+            info!(
+                "No CSS files specified, using default CSS: {}",
+                config.default_css
+            );
+            vec![big::ResourceFile::new(&config.default_css)]
+        }
+    };
 
     // Convert JS files to ResourceFile structs
-    let js_files: Vec<big::ResourceFile> = args
-        .js
-        .as_ref()
-        .map(|files| {
+    let js_files: Vec<big::ResourceFile> = match args.js.as_ref() {
+        Some(files) if !files.is_empty() => {
+            // User-specified JS files
             files
                 .iter()
                 .map(|path| big::ResourceFile::new(path))
                 .collect()
-        })
-        .unwrap_or_default();
+        }
+        _ => {
+            // No JS specified, use default
+            info!(
+                "No JavaScript files specified, using default JS: {}",
+                config.default_js
+            );
+            vec![big::ResourceFile::new(&config.default_js)]
+        }
+    };
 
     // Create watch configuration
     let watch_config = big::WatchConfig {

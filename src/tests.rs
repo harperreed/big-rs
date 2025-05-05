@@ -242,3 +242,52 @@ fn test_generate_slides_basic() {
     // Check that the file exists
     assert!(output_files[0].exists(), "Output file should exist");
 }
+
+#[test]
+fn test_default_css_js_config_values() {
+    // Verify that Config's default CSS and JS values match the expected URLs
+    let config = config::Config::default();
+
+    assert_eq!(
+        config.default_css, "https://raw.githubusercontent.com/harperreed/big/gh-pages/big.css",
+        "Default CSS URL should match expected value"
+    );
+    assert_eq!(
+        config.default_js, "https://raw.githubusercontent.com/harperreed/big/gh-pages/big.js",
+        "Default JS URL should match expected value"
+    );
+
+    // Create a simple markdown file
+    let markdown_content = "# Test Slide\n\nThis is a test slide.";
+    let markdown_file = create_temp_markdown_file(markdown_content);
+
+    // Create ResourceFile from default values
+    let css_resource = ResourceFile::new(&config.default_css);
+    let js_resource = ResourceFile::new(&config.default_js);
+
+    // Generate HTML with the default resources explicitly provided
+    let result = html::generate_html(
+        &markdown_file.path().to_path_buf(),
+        &[css_resource],
+        &[js_resource],
+        false, // Don't embed resources to make link checking easier
+    );
+
+    assert!(result.is_ok());
+    let html = result.unwrap();
+
+    // Verify CSS is included correctly
+    let expected_css_link = format!(r#"<link rel="stylesheet" href="{}">"#, config.default_css);
+    assert!(
+        html.contains(&expected_css_link),
+        "HTML should contain default CSS link: {}",
+        expected_css_link
+    );
+
+    // Verify JS is included correctly
+    let expected_js_link = format!(r#"<script src="{}">"#, config.default_js);
+    assert!(
+        html.contains(&expected_js_link),
+        "HTML should contain default JS script tag"
+    );
+}

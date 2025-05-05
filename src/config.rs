@@ -13,6 +13,8 @@ pub struct Config {
     pub html_template_path: Option<PathBuf>,
     pub default_timeout_ms: u64,
     pub embed_resources: bool,
+    pub default_css: String,
+    pub default_js: String,
 }
 
 impl Default for Config {
@@ -22,6 +24,10 @@ impl Default for Config {
             html_template_path: None,
             default_timeout_ms: 30000, // 30 seconds
             embed_resources: true,
+            default_css: "https://raw.githubusercontent.com/harperreed/big/gh-pages/big.css"
+                .to_string(),
+            default_js: "https://raw.githubusercontent.com/harperreed/big/gh-pages/big.js"
+                .to_string(),
         }
     }
 }
@@ -45,11 +51,20 @@ impl Config {
             .map(|s| s.to_lowercase() != "false")
             .unwrap_or(true);
 
+        let default_css = env::var("DEFAULT_CSS").unwrap_or_else(|_| {
+            "https://raw.githubusercontent.com/harperreed/big/gh-pages/big.css".to_string()
+        });
+        let default_js = env::var("DEFAULT_JS").unwrap_or_else(|_| {
+            "https://raw.githubusercontent.com/harperreed/big/gh-pages/big.js".to_string()
+        });
+
         Self {
             browser_path,
             html_template_path,
             default_timeout_ms,
             embed_resources,
+            default_css,
+            default_js,
         }
     }
 
