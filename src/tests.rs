@@ -104,6 +104,49 @@ fn test_resource_file_remote() {
 }
 
 #[test]
+fn test_generate_pptx_basic() {
+    // Create a temporary directory for slides
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let slide_dir = temp_dir.path();
+    
+    // Create some test slide images (small colored squares for quick test)
+    let slide1_path = slide_dir.join("slide_0001.png");
+    let slide2_path = slide_dir.join("slide_0002.png");
+    
+    // Create two small colored images
+    let red_img = image::ImageBuffer::from_fn(100, 100, |_, _| image::Rgb([255u8, 0u8, 0u8]));
+    let blue_img = image::ImageBuffer::from_fn(100, 100, |_, _| image::Rgb([0u8, 0u8, 255u8]));
+    
+    // Save the images
+    red_img.save(&slide1_path).expect("Failed to save red image");
+    blue_img.save(&slide2_path).expect("Failed to save blue image");
+    
+    // Output PPTX file
+    let output_path = temp_dir.path().join("output.pptx");
+    
+    // Generate the PPTX
+    let result = generate_pptx(
+        slide_dir,
+        &output_path,
+        "slide_*.png",
+        "Test Presentation"
+    );
+    
+    assert!(result.is_ok(), "Failed to generate PPTX: {:?}", result.err());
+    assert!(output_path.exists(), "PPTX file was not created");
+    
+    // Verify basic ZIP structure with the zip library
+    let file = fs::File::open(&output_path).expect("Failed to open PPTX file");
+    let mut archive = zip::ZipArchive::new(file).expect("Failed to read PPTX as ZIP");
+    
+    // Check for some essential files
+    assert!(archive.by_name("[Content_Types].xml").is_ok(), "Missing [Content_Types].xml");
+    assert!(archive.by_name("ppt/presentation.xml").is_ok(), "Missing presentation.xml");
+    assert!(archive.by_name("ppt/slides/slide1.xml").is_ok(), "Missing slide1.xml");
+    assert!(archive.by_name("ppt/slides/slide2.xml").is_ok(), "Missing slide2.xml");
+}
+
+#[test]
 #[ignore] // Ignore by default as it requires Chrome to be installed
 fn test_generate_slides_basic() {
     // Create a simple HTML file with one slide

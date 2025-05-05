@@ -21,7 +21,7 @@ enum Commands {
     GenerateSlides(GenerateSlidesArgs),
     
     /// Generate PPTX from slides
-    GeneratePptx,
+    GeneratePptx(GeneratePptxArgs),
 }
 
 #[derive(Args)]
@@ -74,13 +74,32 @@ struct GenerateSlidesArgs {
     height: u32,
 }
 
+#[derive(Args)]
+struct GeneratePptxArgs {
+    /// Directory containing slide images
+    #[arg(short, long)]
+    input_dir: PathBuf,
+    
+    /// Output PPTX file path
+    #[arg(short, long)]
+    output: PathBuf,
+    
+    /// Pattern to match slide images (e.g., "slide_*.png")
+    #[arg(long, default_value = "*.png")]
+    pattern: String,
+    
+    /// Title for the presentation
+    #[arg(long, default_value = "Presentation")]
+    title: String,
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logger
     env_logger::init();
     
     let cli = Cli::parse();
 
-    let result = match &cli.command {
+    let result: Result<(), Box<dyn std::error::Error>> = match &cli.command {
         Some(Commands::GenerateHtml(args)) => {
             println!("Executing generate-html command...");
             
@@ -126,9 +145,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Slides generated successfully: {:?}", args.output_dir);
             Ok(())
         }
-        Some(Commands::GeneratePptx) => {
+        Some(Commands::GeneratePptx(args)) => {
             println!("Executing generate-pptx command...");
-            big::generate_pptx()
+            
+            // Generate PowerPoint presentation from images
+            big::generate_pptx(
+                &args.input_dir,
+                &args.output,
+                &args.pattern,
+                &args.title
+            )?;
+            
+            println!("PPTX generated successfully: {:?}", args.output);
+            Ok(())
         }
         None => {
             println!("No command specified. Use --help for usage information.");
