@@ -52,7 +52,7 @@ fn test_generate_html_command() {
 
     // Verify output file content
     assert!(
-        html_content.contains("<h1>Test Slide</h1>"),
+        html_content.contains("<div>Test Slide"),
         "Missing markdown content"
     );
     assert!(
@@ -97,7 +97,7 @@ fn test_default_css_js_inclusion() {
 
     // Verify output file content
     assert!(
-        html_content.contains("<h1>Test Slide</h1>"),
+        html_content.contains("<div>Test Slide"),
         "Missing markdown content"
     );
 

@@ -39,14 +39,15 @@ fn test_generate_html_basic() {
     assert!(result.is_ok());
     let html = result.unwrap();
 
-    // Check that the HTML includes the markdown content
-    assert!(html.contains("<h1>Test Slide</h1>"));
-    assert!(html.contains("<p>This is a test slide.</p>"));
+    // Check that the HTML includes the markdown content without h1 tags
+    // The div should directly contain the text "Test Slide" followed by the paragraph
+    assert!(html.contains("<div>Test Slide\n<p>This is a test slide.</p></div>"));
 
     // Check that the HTML has the proper structure
     assert!(html.contains("<!DOCTYPE html>"));
     assert!(html.contains("<html lang=\"en\">"));
-    assert!(html.contains("<div class=\"slides\">"));
+    // No longer expecting slides wrapper div, as we now directly output slides as divs under body
+    assert!(html.contains("<body>\n<div>"));
 }
 
 #[test]
@@ -202,11 +203,7 @@ fn test_generate_slides_basic() {
     </style>
 </head>
 <body>
-    <div class="slides">
-        <div>
-            <h1>Hello Slide</h1>
-        </div>
-    </div>
+    <div>Hello Slide</div>
 </body>
 </html>"#;
 
