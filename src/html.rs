@@ -80,13 +80,13 @@ pub fn generate_html(
     let slides = extract_slides(&html_content);
     for slide in slides {
         html_doc.push_str("<div>");
-        
+
         // Extract slide title and remove any paragraph tags for clean output
         let processed_content = extract_slide_content(&slide);
-        
+
         // Add the processed content
         html_doc.push_str(&processed_content);
-        
+
         html_doc.push_str("</div>\n");
     }
 
@@ -105,13 +105,13 @@ pub fn generate_html(
             }
         }
     }
-    
+
     // Add auto-reload script if provided
     if let Some(script) = auto_reload_script {
         html_doc.push_str(&script);
         html_doc.push('\n');
     }
-    
+
     html_doc.push_str("</body>\n</html>");
 
     Ok(html_doc)
@@ -154,7 +154,7 @@ fn parse_frontmatter(content: &str) -> (String, String, String, String) {
 /// Process content to convert headers to slide breaks
 fn process_content_for_slides(content: String) -> String {
     // Replace "#" that are not part of headings with "!--HASH--!"
-    let content = content.replace("\\#", "!--HASH--!");
+    let content = content.replace(r"\#", "!--HASH--!");
 
     // Split content by lines to properly handle headers
     let lines: Vec<&str> = content.lines().collect();
@@ -163,15 +163,15 @@ fn process_content_for_slides(content: String) -> String {
 
     for line in lines {
         let trimmed = line.trim();
-        
+
         // Check for "#Text" (no space) or "# Text" (with space) format
-        let is_header = trimmed.starts_with("#") && 
-                        (trimmed.len() == 1 || // Just "#"
-                         (trimmed.len() > 1 && 
-                          trimmed.chars().nth(1).unwrap() != '#' && // Not "##" (h2)
-                          (trimmed.chars().nth(1).unwrap() == ' ' || // "# Text"
-                           !trimmed.chars().nth(1).unwrap().is_whitespace()))); // "#Text"
-        
+        let is_header = trimmed.starts_with('#')
+            && (trimmed.len() == 1 || // Just "#"
+                        (trimmed.len() > 1 &&
+                         trimmed.chars().nth(1).unwrap() != '#' && // Not "##" (h2)
+                         (trimmed.chars().nth(1).unwrap() == ' ' || // "# Text"
+                          !trimmed.chars().nth(1).unwrap().is_whitespace()))); // "#Text"
+
         // Add slide break for headers (except the first one)
         if is_header && !is_first_section {
             result.push_str("\n\n---\n\n");
@@ -215,11 +215,11 @@ fn extract_slide_content(slide: &str) -> String {
     if let Some(h1_start) = slide.find("<h1>") {
         if let Some(h1_end) = slide.find("</h1>") {
             // Get title text without h1 tags
-            let title = &slide[h1_start+4..h1_end];
-            
+            let title = &slide[h1_start + 4..h1_end];
+
             // Get content after the h1 tag
-            let body = &slide[h1_end+5..];
-            
+            let body = &slide[h1_end + 5..];
+
             // Return title and body - preserve HTML
             if body.trim().is_empty() {
                 title.to_string()
@@ -233,14 +233,14 @@ fn extract_slide_content(slide: &str) -> String {
     // Case 2: Slide contains <p>#Text</p> format (no space after #)
     else if let Some(p_start) = slide.find("<p>") {
         if let Some(p_end) = slide.find("</p>") {
-            let p_content = &slide[p_start+3..p_end];
-            
+            let p_content = &slide[p_start + 3..p_end];
+
             // Check if content starts with # and remove it
             let clean_content = p_content.strip_prefix('#').unwrap_or(p_content);
-            
+
             // Extract any remaining content after this paragraph
-            let rest = &slide[p_end+4..];
-            
+            let rest = &slide[p_end + 4..];
+
             // Return content preserving HTML
             if rest.trim().is_empty() {
                 clean_content.to_string()
@@ -250,7 +250,7 @@ fn extract_slide_content(slide: &str) -> String {
         } else {
             slide.to_string()
         }
-    } 
+    }
     // Default: use the slide content as is
     else {
         slide.to_string()

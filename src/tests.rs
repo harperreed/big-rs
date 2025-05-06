@@ -41,8 +41,7 @@ fn test_generate_html_basic() {
 
     // Check that the HTML includes the markdown content without h1 tags
     // The div should directly contain the text "Test Slide" followed by the content
-    assert!(html.contains("<div>Test Slide") && 
-            html.contains("This is a test slide."));
+    assert!(html.contains("<div>Test Slide") && html.contains("This is a test slide."));
 
     // Check that the HTML has the proper structure
     assert!(html.contains("<!DOCTYPE html>"));
@@ -307,9 +306,10 @@ fn test_header_format_with_space() {
     let html = result.unwrap();
 
     // Check that the HTML includes the markdown content without h1 tags
-    assert!(html.contains("<div>Test Slide") && 
-           html.contains("This is a test slide."), 
-        "HTML should contain slide content without the h1 tags");
+    assert!(
+        html.contains("<div>Test Slide") && html.contains("This is a test slide."),
+        "HTML should contain slide content without the h1 tags"
+    );
 }
 
 #[test]
@@ -330,10 +330,14 @@ fn test_header_format_without_space() {
 
     // The content should be properly processed to handle the no-space format
     // and should NOT contain the # character in the output
-    assert!(html.contains("<div>Test Slide") && html.contains("This is a test slide."), 
-        "HTML should contain slide content without the # character");
-    assert!(!html.contains("<div>#Test Slide"), 
-        "HTML should not contain the # character in the output");
+    assert!(
+        html.contains("<div>Test Slide") && html.contains("This is a test slide."),
+        "HTML should contain slide content without the # character"
+    );
+    assert!(
+        !html.contains("<div>#Test Slide"),
+        "HTML should not contain the # character in the output"
+    );
 }
 
 #[test]
@@ -355,26 +359,36 @@ fn test_header_format_complex_case() {
     assert!(result.is_ok());
     let html = result.unwrap();
 
-    
     // Check that all slides are properly processed
-    assert!(html.contains("<div>First Slide"), 
-        "First slide should be included with proper format");
-    assert!(html.contains("<div>Second Slide"), 
-        "Second slide should be included with proper format");
-    assert!(html.contains("<div>Special Characters: !@#$%^&amp;*()_+"), 
-        "Slide with special characters should be included properly");
-    assert!(html.contains("<div>Extra Spaces"), 
-        "Slide with extra spaces should be included properly");
-    
+    assert!(
+        html.contains("<div>First Slide"),
+        "First slide should be included with proper format"
+    );
+    assert!(
+        html.contains("<div>Second Slide"),
+        "Second slide should be included with proper format"
+    );
+    assert!(
+        html.contains("<div>Special Characters: !@#$%^&amp;*()_+"),
+        "Slide with special characters should be included properly"
+    );
+    assert!(
+        html.contains("<div>Extra Spaces"),
+        "Slide with extra spaces should be included properly"
+    );
+
     // Ensure no slides contain the # character in their title
-    assert!(!html.contains("<div>#"), 
-        "HTML should not contain the # character in any slide title");
+    assert!(
+        !html.contains("<div>#"),
+        "HTML should not contain the # character in any slide title"
+    );
 }
 
 #[test]
 fn test_header_format_multiple_slides() {
     // Test multiple slides with mixed header formats
-    let markdown_content = "# Slide One\n\nContent for slide one.\n\n#Slide Two\n\nContent for slide two.";
+    let markdown_content =
+        "# Slide One\n\nContent for slide one.\n\n#Slide Two\n\nContent for slide two.";
     let markdown_file = create_temp_markdown_file(markdown_content);
 
     let result = html::generate_html_without_reload(
@@ -388,16 +402,22 @@ fn test_header_format_multiple_slides() {
     let html = result.unwrap();
 
     // Check for first slide content without h1 tags
-    assert!(html.contains("<div>Slide One") && html.contains("Content for slide one."), 
-        "HTML should contain first slide content correctly");
-    
+    assert!(
+        html.contains("<div>Slide One") && html.contains("Content for slide one."),
+        "HTML should contain first slide content correctly"
+    );
+
     // Check for second slide content without h1 tags and without # character
-    assert!(html.contains("<div>Slide Two") && html.contains("Content for slide two."), 
-        "HTML should contain second slide content correctly without # character");
-    
+    assert!(
+        html.contains("<div>Slide Two") && html.contains("Content for slide two."),
+        "HTML should contain second slide content correctly without # character"
+    );
+
     // Make sure we don't have the # character in any of the output
-    assert!(!html.contains("<div>#Slide"), 
-        "HTML should not contain the # character in any slide");
+    assert!(
+        !html.contains("<div>#Slide"),
+        "HTML should not contain the # character in any slide"
+    );
 }
 
 #[test]
@@ -417,8 +437,14 @@ fn test_slide_with_html_content() {
     let html = result.unwrap();
 
     // Check that the HTML tags are preserved in the output
-    assert!(html.contains("<div>Slide With HTML\n<div class=\"special\">This is <em>formatted</em> content</div>"), 
-        "HTML should preserve div and em tags");
-    assert!(html.contains("<ul>\n<li>Item 1</li>\n<li>Item 2</li>\n</ul>"), 
-        "HTML should preserve ul and li tags");
+    assert!(
+        html.contains(
+            "<div>Slide With HTML\n<div class=\"special\">This is <em>formatted</em> content</div>"
+        ),
+        "HTML should preserve div and em tags"
+    );
+    assert!(
+        html.contains("<ul>\n<li>Item 1</li>\n<li>Item 2</li>\n</ul>"),
+        "HTML should preserve ul and li tags"
+    );
 }

@@ -3,17 +3,17 @@
 
 use log::{debug, error, info};
 use std::fs;
+use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::Duration;
-use std::net::{TcpListener, TcpStream};
 
 use notify::{RecursiveMode, Watcher};
 use notify_debouncer_full::{Debouncer, new_debouncer};
-use tiny_http::{Header, Response, Server, StatusCode};
-use tungstenite::{accept, Message};
 use parking_lot::Mutex;
+use tiny_http::{Header, Response, Server, StatusCode};
+use tungstenite::{Message, accept};
 
 use crate::config::Config as AppConfig;
 use crate::errors::{BigError, Result};
@@ -54,10 +54,10 @@ pub struct WatchConfig {
 
     /// Port for local web server
     pub port: u16,
-    
+
     /// Whether to enable auto-reload functionality
     pub auto_reload: bool,
-    
+
     /// WebSocket port for auto-reload (defaults to HTTP port + 1)
     pub ws_port: Option<u16>,
 }
@@ -104,13 +104,15 @@ impl WebSocketManager {
 
     fn add_connection(&mut self, stream: TcpStream) -> Result<()> {
         // Keep socket in blocking mode for the handshake
-        match accept(stream.try_clone().map_err(|e| {
-            BigError::WatchError(format!("Failed to clone stream: {}", e))
-        })?) {
+        match accept(
+            stream
+                .try_clone()
+                .map_err(|e| BigError::WatchError(format!("Failed to clone stream: {}", e)))?,
+        ) {
             Ok(websocket) => {
                 // After handshake, the socket is already in blocking mode
                 // We'll leave it that way since tungstenite handles async internally
-                
+
                 self.connections.push(WebSocketConnection {
                     connection: websocket,
                 });
@@ -122,17 +124,23 @@ impl WebSocketManager {
                     debug!("Ignoring temporary WouldBlock error during WebSocket handshake");
                     Ok(())
                 } else {
-                    Err(BigError::WatchError(format!("Failed to accept WebSocket connection: {}", e)))
+                    Err(BigError::WatchError(format!(
+                        "Failed to accept WebSocket connection: {}",
+                        e
+                    )))
                 }
-            },
+            }
         }
     }
-    
+
     /// Sends a message to all connected clients
     fn broadcast(&mut self, message: &str) {
         let mut i = 0;
         while i < self.connections.len() {
-            match self.connections[i].connection.send(Message::Text(message.to_string())) {
+            match self.connections[i]
+                .connection
+                .send(Message::Text(message.to_string()))
+            {
                 Ok(_) => {
                     i += 1;
                 }
@@ -143,7 +151,7 @@ impl WebSocketManager {
             }
         }
     }
-    
+
     /// Cleanup and prepare for shutdown
     fn cleanup(&mut self) {
         for connection in &mut self.connections {
@@ -201,14 +209,17 @@ fn auto_reload_js(ws_port: u16) -> String {
     )
 }
 
+// Response type for the start_server function
+type ServerResponse = (Arc<Server>, Option<Arc<Mutex<WebSocketManager>>>);
+
 /// Start a simple HTTP server to serve HTML and related files
 /// Also starts a WebSocket server for auto-reload if requested
 fn start_server(
-    html_path: PathBuf, 
-    port: u16, 
-    auto_reload: bool, 
-    ws_port: Option<u16>
-) -> Result<(Arc<Server>, Option<Arc<Mutex<WebSocketManager>>>)> {
+    html_path: PathBuf,
+    port: u16,
+    auto_reload: bool,
+    ws_port: Option<u16>,
+) -> Result<ServerResponse> {
     // Start HTTP server
     let server = Server::http(format!("0.0.0.0:{}", port))
         .map_err(|e| BigError::WatchError(format!("Failed to start HTTP server: {}", e)))?;
@@ -228,24 +239,33 @@ fn start_server(
     let ws_manager = if auto_reload {
         // Calculate WebSocket port if not specified
         let ws_port = ws_port.unwrap_or(port + 1);
-        
+
         // Create WebSocket manager
         let ws_manager = Arc::new(Mutex::new(WebSocketManager::new()));
         let ws_thread_manager = ws_manager.clone();
-        
+
         // Start WebSocket server in a separate thread
         thread::spawn(move || {
             match TcpListener::bind(format!("0.0.0.0:{}", ws_port)) {
                 Ok(listener) => {
-                    info!("WebSocket server for auto-reload listening on port {}", ws_port);
-                    println!("WebSocket server for auto-reload listening on port {}", ws_port);
-                    
+                    info!(
+                        "WebSocket server for auto-reload listening on port {}",
+                        ws_port
+                    );
+                    println!(
+                        "WebSocket server for auto-reload listening on port {}",
+                        ws_port
+                    );
+
                     // Set the listener to non-blocking mode to avoid freezing on accept
                     if let Err(e) = listener.set_nonblocking(true) {
-                        error!("Failed to set WebSocket listener to non-blocking mode: {}", e);
+                        error!(
+                            "Failed to set WebSocket listener to non-blocking mode: {}",
+                            e
+                        );
                         return;
                     }
-                    
+
                     // Accept connections with proper handling of would-block errors
                     loop {
                         match listener.accept() {
@@ -272,7 +292,7 @@ fn start_server(
                 }
             }
         });
-        
+
         Some(ws_manager)
     } else {
         None
@@ -377,10 +397,10 @@ pub fn watch_markdown(config: WatchConfig, app_config: &AppConfig) -> Result<()>
     // Start local server if requested
     let ws_manager = if config.serve {
         let (_server, manager) = start_server(
-            config.html_output.clone(), 
-            config.port, 
-            config.auto_reload, 
-            ws_port
+            config.html_output.clone(),
+            config.port,
+            config.auto_reload,
+            ws_port,
         )?;
         manager
     } else {
@@ -463,7 +483,7 @@ pub fn watch_markdown(config: WatchConfig, app_config: &AppConfig) -> Result<()>
                         Ok(_) => {
                             info!("Regenerated outputs successfully");
                             last_processed = now;
-                            
+
                             // Send reload message to clients if auto-reload is enabled
                             if let Some(ref ws_manager) = ws_manager {
                                 ws_manager.lock().broadcast("reload");
@@ -538,19 +558,19 @@ fn is_relevant_path(path: &Path, config: &WatchConfig) -> bool {
 
 /// Regenerate all outputs based on the current state of the markdown file
 fn regenerate_outputs(
-    config: &WatchConfig, 
+    config: &WatchConfig,
     app_config: &AppConfig,
-    ws_port: Option<u16>
+    ws_port: Option<u16>,
 ) -> Result<()> {
     info!("Regenerating outputs...");
 
     // Generate auto-reload script if needed
     let auto_reload_js_script = if config.auto_reload {
-        ws_port.map(|port| auto_reload_js(port))
+        ws_port.map(auto_reload_js)
     } else {
         None
     };
-    
+
     // Generate HTML
     let html_content = html::generate_html(
         &config.markdown_path,

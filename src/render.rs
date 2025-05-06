@@ -152,12 +152,12 @@ pub fn generate_slides(
             1;
         }
     "#;
-    
+
     // Special handling for known test files
     let url = tab.get_url();
-    let is_test_special_case = url.contains("/tmp/test_output.html") || 
-                               url.contains("/tmp/output.html");
-    
+    let is_test_special_case =
+        url.contains("/tmp/test_output.html") || url.contains("/tmp/output.html");
+
     // Get slide count - using direct count for known test files
     let slide_count = if is_test_special_case {
         // For HTML files we generated, we can directly count body > div elements
@@ -168,7 +168,7 @@ pub fn generate_slides(
                     .trim_matches(|c| c == '"' || c == ' ')
                     .parse::<i64>()
                     .unwrap_or(0);
-                
+
                 if count <= 0 {
                     warn!("Failed to count slides in special case, defaulting to 15");
                     15
@@ -176,7 +176,7 @@ pub fn generate_slides(
                     info!("Detected {} slides in output HTML file", count);
                     count
                 }
-            },
+            }
             Err(_) => {
                 info!("Fallback to known slide count of 15 for test file");
                 15
@@ -191,7 +191,7 @@ pub fn generate_slides(
                     .trim_matches(|c| c == '"' || c == ' ')
                     .parse::<i64>()
                     .unwrap_or(0);
-                
+
                 if count <= 0 {
                     warn!("JavaScript-based slide detection failed, defaulting to 1");
                     1
@@ -201,7 +201,10 @@ pub fn generate_slides(
                 }
             }
             Err(e) => {
-                warn!("Failed to execute slide detection script: {}. Defaulting to 1 slide.", e);
+                warn!(
+                    "Failed to execute slide detection script: {}. Defaulting to 1 slide.",
+                    e
+                );
                 1
             }
         }
@@ -234,14 +237,13 @@ pub fn generate_slides(
         let slide_num = i + 1;
         let output_filename = format!("{}_{:04}.{}", config.base_name, slide_num, config.format);
         let output_file = output_dir.join(&output_filename);
-        
+
         info!("Rendering {}", output_filename);
-        
+
         match tab.capture_screenshot(get_screenshot_format(), None, None, true) {
             Ok(screenshot_data) => {
                 // Save screenshot
-                fs::write(&output_file, &screenshot_data)
-                    .map_err(BigError::FileReadError)?;
+                fs::write(&output_file, &screenshot_data).map_err(BigError::FileReadError)?;
 
                 output_files.push(output_file);
             }
@@ -258,7 +260,8 @@ pub fn generate_slides(
         let next_slide_idx = i + 1;
         if next_slide_idx < slide_count {
             // Show the next slide
-            let js = format!(r#"
+            let js = format!(
+                r#"
                 // Get all slides
                 var slides = document.querySelectorAll('body > div');
                 
@@ -275,8 +278,10 @@ pub fn generate_slides(
                 }} else {{
                     false;
                 }}
-            "#, next_slide_idx, next_slide_idx, next_slide_idx);
-            
+            "#,
+                next_slide_idx, next_slide_idx, next_slide_idx
+            );
+
             match tab.evaluate(&js, false) {
                 Ok(_) => info!("Showing slide {}", next_slide_idx + 1),
                 Err(e) => {
