@@ -9,11 +9,24 @@ use std::fs;
 use std::path::Path;
 
 /// Generate HTML from a markdown file with optional CSS and JS resources
+/// This version is for backward compatibility with existing test code
+#[allow(dead_code)]
+pub fn generate_html_without_reload(
+    markdown_path: &Path,
+    css_files: &[ResourceFile],
+    js_files: &[ResourceFile],
+    embed_resources: bool,
+) -> Result<String> {
+    generate_html(markdown_path, css_files, js_files, embed_resources, None)
+}
+
+/// Generate HTML from a markdown file with optional CSS and JS resources
 pub fn generate_html(
     markdown_path: &Path,
     css_files: &[ResourceFile],
     js_files: &[ResourceFile],
     embed_resources: bool,
+    auto_reload_script: Option<String>,
 ) -> Result<String> {
     info!("Generating HTML from markdown: {:?}", markdown_path);
 
@@ -92,7 +105,13 @@ pub fn generate_html(
             }
         }
     }
-
+    
+    // Add auto-reload script if provided
+    if let Some(script) = auto_reload_script {
+        html_doc.push_str(&script);
+        html_doc.push('\n');
+    }
+    
     html_doc.push_str("</body>\n</html>");
 
     Ok(html_doc)

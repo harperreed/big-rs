@@ -29,7 +29,7 @@ fn test_generate_html_basic() {
     let markdown_content = "# Test Slide\n\nThis is a test slide.";
     let markdown_file = create_temp_markdown_file(markdown_content);
 
-    let result = html::generate_html(
+    let result = html::generate_html_without_reload(
         &markdown_file.path().to_path_buf(),
         &[],
         &[],
@@ -61,7 +61,7 @@ fn test_generate_html_with_local_css() {
 
     let css_resource = ResourceFile::new(css_file.path().to_str().unwrap());
 
-    let result = html::generate_html(
+    let result = html::generate_html_without_reload(
         &markdown_file.path().to_path_buf(),
         &[css_resource],
         &[],
@@ -85,7 +85,7 @@ fn test_generate_html_with_local_js() {
 
     let js_resource = ResourceFile::new(js_file.path().to_str().unwrap());
 
-    let result = html::generate_html(
+    let result = html::generate_html_without_reload(
         &markdown_file.path().to_path_buf(),
         &[],
         &[js_resource],
@@ -264,7 +264,7 @@ fn test_default_css_js_config_values() {
     let js_resource = ResourceFile::new(&config.default_js);
 
     // Generate HTML with the default resources explicitly provided
-    let result = html::generate_html(
+    let result = html::generate_html_without_reload(
         &markdown_file.path().to_path_buf(),
         &[css_resource],
         &[js_resource],
@@ -296,7 +296,7 @@ fn test_header_format_with_space() {
     let markdown_content = "# Test Slide\n\nThis is a test slide.";
     let markdown_file = create_temp_markdown_file(markdown_content);
 
-    let result = html::generate_html(
+    let result = html::generate_html_without_reload(
         &markdown_file.path().to_path_buf(),
         &[],
         &[],
@@ -318,7 +318,7 @@ fn test_header_format_without_space() {
     let markdown_content = "#Test Slide\n\nThis is a test slide.";
     let markdown_file = create_temp_markdown_file(markdown_content);
 
-    let result = html::generate_html(
+    let result = html::generate_html_without_reload(
         &markdown_file.path().to_path_buf(),
         &[],
         &[],
@@ -345,7 +345,7 @@ fn test_header_format_complex_case() {
                            #   Extra Spaces\n\nSlide with multiple spaces after #.";
     let markdown_file = create_temp_markdown_file(markdown_content);
 
-    let result = html::generate_html(
+    let result = html::generate_html_without_reload(
         &markdown_file.path().to_path_buf(),
         &[],
         &[],
@@ -377,7 +377,7 @@ fn test_header_format_multiple_slides() {
     let markdown_content = "# Slide One\n\nContent for slide one.\n\n#Slide Two\n\nContent for slide two.";
     let markdown_file = create_temp_markdown_file(markdown_content);
 
-    let result = html::generate_html(
+    let result = html::generate_html_without_reload(
         &markdown_file.path().to_path_buf(),
         &[],
         &[],
@@ -406,7 +406,7 @@ fn test_slide_with_html_content() {
     let markdown_content = "# Slide With HTML\n\n<div class=\"special\">This is <em>formatted</em> content</div>\n\n<ul>\n<li>Item 1</li>\n<li>Item 2</li>\n</ul>";
     let markdown_file = create_temp_markdown_file(markdown_content);
 
-    let result = html::generate_html(
+    let result = html::generate_html_without_reload(
         &markdown_file.path().to_path_buf(),
         &[],
         &[],

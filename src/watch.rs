@@ -7,10 +7,13 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::Duration;
+use std::net::{TcpListener, TcpStream};
 
 use notify::{RecursiveMode, Watcher};
 use notify_debouncer_full::{Debouncer, new_debouncer};
 use tiny_http::{Header, Response, Server, StatusCode};
+use tungstenite::{accept, Message};
+use parking_lot::Mutex;
 
 use crate::config::Config as AppConfig;
 use crate::errors::{BigError, Result};
@@ -51,6 +54,12 @@ pub struct WatchConfig {
 
     /// Port for local web server
     pub port: u16,
+    
+    /// Whether to enable auto-reload functionality
+    pub auto_reload: bool,
+    
+    /// WebSocket port for auto-reload (defaults to HTTP port + 1)
+    pub ws_port: Option<u16>,
 }
 
 impl Default for WatchConfig {
@@ -66,6 +75,8 @@ impl Default for WatchConfig {
             debounce_ms: 500,
             serve: false,
             port: 8080,
+            auto_reload: false,
+            ws_port: None,
         }
     }
 }
@@ -74,8 +85,131 @@ impl Default for WatchConfig {
 #[allow(dead_code)]
 type WatchDebouncer = Debouncer<notify::FsEventWatcher, notify_debouncer_full::FileIdMap>;
 
+/// Structure to manage active WebSocket connections
+struct WebSocketManager {
+    connections: Vec<WebSocketConnection>,
+}
+
+/// Represents a single WebSocket connection
+struct WebSocketConnection {
+    connection: tungstenite::WebSocket<TcpStream>,
+}
+
+impl WebSocketManager {
+    fn new() -> Self {
+        WebSocketManager {
+            connections: Vec::new(),
+        }
+    }
+
+    fn add_connection(&mut self, stream: TcpStream) -> Result<()> {
+        // Keep socket in blocking mode for the handshake
+        match accept(stream.try_clone().map_err(|e| {
+            BigError::WatchError(format!("Failed to clone stream: {}", e))
+        })?) {
+            Ok(websocket) => {
+                // After handshake, the socket is already in blocking mode
+                // We'll leave it that way since tungstenite handles async internally
+                
+                self.connections.push(WebSocketConnection {
+                    connection: websocket,
+                });
+                Ok(())
+            }
+            Err(e) => {
+                // Check if this is just a would-block error, which we can ignore
+                if format!("{:?}", e).contains("WouldBlock") {
+                    debug!("Ignoring temporary WouldBlock error during WebSocket handshake");
+                    Ok(())
+                } else {
+                    Err(BigError::WatchError(format!("Failed to accept WebSocket connection: {}", e)))
+                }
+            },
+        }
+    }
+    
+    /// Sends a message to all connected clients
+    fn broadcast(&mut self, message: &str) {
+        let mut i = 0;
+        while i < self.connections.len() {
+            match self.connections[i].connection.send(Message::Text(message.to_string())) {
+                Ok(_) => {
+                    i += 1;
+                }
+                Err(_) => {
+                    // Remove failed connections
+                    self.connections.remove(i);
+                }
+            }
+        }
+    }
+    
+    /// Cleanup and prepare for shutdown
+    fn cleanup(&mut self) {
+        for connection in &mut self.connections {
+            let _ = connection.connection.close(None);
+        }
+        self.connections.clear();
+    }
+}
+
+/// JavaScript code for auto-reload functionality
+fn auto_reload_js(ws_port: u16) -> String {
+    format!(
+        r#"<script>
+// Auto-reload WebSocket client
+(function() {{
+    const ws_port = {};
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${{wsProtocol}}//${{window.location.hostname}}:${{ws_port}}`;
+    
+    let socket;
+    let reconnectInterval;
+    
+    function connect() {{
+        socket = new WebSocket(wsUrl);
+        
+        socket.onopen = function() {{
+            console.log('Connected to auto-reload server');
+            clearInterval(reconnectInterval);
+        }};
+        
+        socket.onclose = function() {{
+            console.log('Disconnected from auto-reload server. Attempting to reconnect...');
+            reconnectInterval = setInterval(connect, 3000);
+        }};
+        
+        socket.onerror = function(error) {{
+            console.error('WebSocket error:', error);
+            socket.close();
+        }};
+        
+        socket.onmessage = function(event) {{
+            console.log('Received message:', event.data);
+            if (event.data === 'reload') {{
+                console.log('Reloading page...');
+                window.location.reload();
+            }}
+        }};
+    }}
+    
+    // Start connection
+    connect();
+}})();
+</script>"#,
+        ws_port
+    )
+}
+
 /// Start a simple HTTP server to serve HTML and related files
-fn start_server(html_path: PathBuf, port: u16) -> Result<()> {
+/// Also starts a WebSocket server for auto-reload if requested
+fn start_server(
+    html_path: PathBuf, 
+    port: u16, 
+    auto_reload: bool, 
+    ws_port: Option<u16>
+) -> Result<(Arc<Server>, Option<Arc<Mutex<WebSocketManager>>>)> {
+    // Start HTTP server
     let server = Server::http(format!("0.0.0.0:{}", port))
         .map_err(|e| BigError::WatchError(format!("Failed to start HTTP server: {}", e)))?;
 
@@ -90,6 +224,61 @@ fn start_server(html_path: PathBuf, port: u16) -> Result<()> {
     let server_arc = Arc::new(server);
     let server_thread = server_arc.clone();
 
+    // Start WebSocket server for auto-reload if requested
+    let ws_manager = if auto_reload {
+        // Calculate WebSocket port if not specified
+        let ws_port = ws_port.unwrap_or(port + 1);
+        
+        // Create WebSocket manager
+        let ws_manager = Arc::new(Mutex::new(WebSocketManager::new()));
+        let ws_thread_manager = ws_manager.clone();
+        
+        // Start WebSocket server in a separate thread
+        thread::spawn(move || {
+            match TcpListener::bind(format!("0.0.0.0:{}", ws_port)) {
+                Ok(listener) => {
+                    info!("WebSocket server for auto-reload listening on port {}", ws_port);
+                    println!("WebSocket server for auto-reload listening on port {}", ws_port);
+                    
+                    // Set the listener to non-blocking mode to avoid freezing on accept
+                    if let Err(e) = listener.set_nonblocking(true) {
+                        error!("Failed to set WebSocket listener to non-blocking mode: {}", e);
+                        return;
+                    }
+                    
+                    // Accept connections with proper handling of would-block errors
+                    loop {
+                        match listener.accept() {
+                            Ok((stream, addr)) => {
+                                debug!("New WebSocket connection from {}", addr);
+                                if let Err(e) = ws_thread_manager.lock().add_connection(stream) {
+                                    error!("Failed to establish WebSocket connection: {}", e);
+                                }
+                            }
+                            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                                // This is normal in non-blocking mode - just wait a bit
+                                thread::sleep(Duration::from_millis(100));
+                            }
+                            Err(e) => {
+                                error!("Failed to accept WebSocket connection: {}", e);
+                                // Sleep to avoid tight loop on persistent errors
+                                thread::sleep(Duration::from_millis(500));
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to start WebSocket server: {}", e);
+                }
+            }
+        });
+        
+        Some(ws_manager)
+    } else {
+        None
+    };
+
+    // Start HTTP server in a separate thread
     thread::spawn(move || {
         info!("HTTP server listening on http://localhost:{}", port);
         println!("HTTP server listening on http://localhost:{}", port);
@@ -153,7 +342,7 @@ fn start_server(html_path: PathBuf, port: u16) -> Result<()> {
         }
     });
 
-    Ok(())
+    Ok((server_arc, ws_manager))
 }
 
 /// Starts watching a markdown file and auto-regenerates outputs when changes occur
@@ -175,13 +364,28 @@ pub fn watch_markdown(config: WatchConfig, app_config: &AppConfig) -> Result<()>
         utils::ensure_parent_directory_exists(pptx_output)?;
     }
 
+    // Calculate WebSocket port if auto-reload is enabled
+    let ws_port = if config.auto_reload {
+        Some(config.ws_port.unwrap_or(config.port + 1))
+    } else {
+        None
+    };
+
     // Initial generation
-    regenerate_outputs(&config, app_config)?;
+    regenerate_outputs(&config, app_config, ws_port)?;
 
     // Start local server if requested
-    if config.serve {
-        start_server(config.html_output.clone(), config.port)?;
-    }
+    let ws_manager = if config.serve {
+        let (_server, manager) = start_server(
+            config.html_output.clone(), 
+            config.port, 
+            config.auto_reload, 
+            ws_port
+        )?;
+        manager
+    } else {
+        None
+    };
 
     // Create a channel to receive file system events
     let (tx, rx) = mpsc::channel();
@@ -255,10 +459,16 @@ pub fn watch_markdown(config: WatchConfig, app_config: &AppConfig) -> Result<()>
                     && now.duration_since(last_processed)
                         > Duration::from_millis(config.debounce_ms)
                 {
-                    match regenerate_outputs(&config, app_config) {
+                    match regenerate_outputs(&config, app_config, ws_port) {
                         Ok(_) => {
                             info!("Regenerated outputs successfully");
                             last_processed = now;
+                            
+                            // Send reload message to clients if auto-reload is enabled
+                            if let Some(ref ws_manager) = ws_manager {
+                                ws_manager.lock().broadcast("reload");
+                                info!("Sent reload signal to connected browsers");
+                            }
                         }
                         Err(e) => error!("Failed to regenerate outputs: {}", e),
                     }
@@ -266,6 +476,11 @@ pub fn watch_markdown(config: WatchConfig, app_config: &AppConfig) -> Result<()>
             }
             Err(e) => error!("Watch error: {:?}", e),
         }
+    }
+
+    // Cleanup WebSocket connections before exiting
+    if let Some(ws_manager) = ws_manager {
+        ws_manager.lock().cleanup();
     }
 
     Ok(())
@@ -322,15 +537,27 @@ fn is_relevant_path(path: &Path, config: &WatchConfig) -> bool {
 }
 
 /// Regenerate all outputs based on the current state of the markdown file
-fn regenerate_outputs(config: &WatchConfig, app_config: &AppConfig) -> Result<()> {
+fn regenerate_outputs(
+    config: &WatchConfig, 
+    app_config: &AppConfig,
+    ws_port: Option<u16>
+) -> Result<()> {
     info!("Regenerating outputs...");
 
+    // Generate auto-reload script if needed
+    let auto_reload_js_script = if config.auto_reload {
+        ws_port.map(|port| auto_reload_js(port))
+    } else {
+        None
+    };
+    
     // Generate HTML
     let html_content = html::generate_html(
         &config.markdown_path,
         &config.css_files,
         &config.js_files,
         config.embed_resources,
+        auto_reload_js_script,
     )?;
 
     // Write HTML to file

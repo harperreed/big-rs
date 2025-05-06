@@ -48,6 +48,26 @@ You can specify a custom port with `--port`:
 big watch -i your-markdown.md -o slides.html --serve --port 3000
 ```
 
+## Auto-Reload with WebSockets
+
+For an even better development experience, enable auto-reload with the `--auto-reload` flag:
+
+```bash
+big watch -i your-markdown.md -o slides.html --serve --auto-reload
+```
+
+This will:
+1. Start a local web server on port 8080 (default)
+2. Start a WebSocket server on port 8081 (default is HTTP port + 1)
+3. Inject a small WebSocket client script into the HTML
+4. Automatically refresh the browser when changes are detected
+
+You can specify a custom WebSocket port with `--ws-port`:
+
+```bash
+big watch -i your-markdown.md -o slides.html --serve --auto-reload --ws-port 9000
+```
+
 ## Custom Styling and Interactivity
 
 You can include custom CSS and JavaScript files:

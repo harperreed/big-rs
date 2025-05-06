@@ -157,6 +157,14 @@ struct WatchArgs {
     /// Port for local web server
     #[arg(long, default_value = "8080")]
     port: u16,
+
+    /// Enable auto-reload on file changes
+    #[arg(long)]
+    auto_reload: bool,
+
+    /// WebSocket port for auto-reload (defaults to HTTP port + 1)
+    #[arg(long)]
+    ws_port: Option<u16>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -281,7 +289,7 @@ fn generate_html(args: &GenerateHtmlArgs, config: &big::Config) -> BigResult<()>
 
     // Generate HTML content
     let html_content =
-        big::html::generate_html(&args.input, &css_files, &js_files, embed_resources)?;
+        big::html::generate_html(&args.input, &css_files, &js_files, embed_resources, None)?;
 
     // Write the HTML content to the output file
     big::html::write_html_to_file(&html_content, &args.output)?;
@@ -420,6 +428,8 @@ fn watch(args: &WatchArgs, config: &big::Config) -> BigResult<()> {
         debounce_ms: args.debounce_ms,
         serve: args.serve,
         port: args.port,
+        auto_reload: args.auto_reload,
+        ws_port: args.ws_port,
     };
 
     // Start watching
