@@ -22,8 +22,8 @@ pub struct RenderConfig {
 impl Default for RenderConfig {
     fn default() -> Self {
         Self {
-            width: 1280,
-            height: 720,
+            width: 1920,
+            height: 1080,
             format: "png".to_string(),
             base_name: "slide".to_string(),
             timeout_ms: 30000, // 30 seconds

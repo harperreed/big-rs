@@ -31,8 +31,9 @@ pub fn generate_html(
     // Process content to handle "#" headers as slide breaks
     let processed_content = process_content_for_slides(content);
 
-    // Convert markdown to HTML
-    let options = ComrakOptions::default();
+    // Convert markdown to HTML, with options to allow raw HTML
+    let mut options = ComrakOptions::default();
+    options.render.unsafe_ = true; // Allow raw HTML
     let html_content = markdown_to_html(&processed_content, &options);
 
     // Build the full HTML document
@@ -200,19 +201,11 @@ fn extract_slide_content(slide: &str) -> String {
             // Get content after the h1 tag
             let body = &slide[h1_end+5..];
             
-            // Clean up the body text - remove paragraph tags while keeping the content
-            let clean_body = if body.trim().starts_with("<p>") && body.trim().ends_with("</p>") {
-                body.trim().strip_prefix("<p>").unwrap_or(body.trim())
-                    .strip_suffix("</p>").unwrap_or(body.trim())
-            } else {
-                body.trim()
-            };
-            
-            // Return title and cleaned body
-            if clean_body.is_empty() {
+            // Return title and body - preserve HTML
+            if body.trim().is_empty() {
                 title.to_string()
             } else {
-                format!("{}\n{}", title, clean_body)
+                format!("{}\n{}", title, body.trim())
             }
         } else {
             slide.to_string()
@@ -228,17 +221,12 @@ fn extract_slide_content(slide: &str) -> String {
             
             // Extract any remaining content after this paragraph
             let rest = &slide[p_end+4..];
-            let clean_rest = if !rest.trim().is_empty() {
-                rest.trim()
-            } else {
-                ""
-            };
             
-            // Return cleaned content
-            if clean_rest.is_empty() {
+            // Return content preserving HTML
+            if rest.trim().is_empty() {
                 clean_content.to_string()
             } else {
-                format!("{}\n{}", clean_content, clean_rest)
+                format!("{}\n{}", clean_content, rest.trim())
             }
         } else {
             slide.to_string()

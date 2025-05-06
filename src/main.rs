@@ -81,11 +81,11 @@ struct GenerateSlidesArgs {
     format: String,
 
     /// Width of the slides in pixels
-    #[arg(long, default_value = "1280")]
+    #[arg(long, default_value = "1920")]
     width: u32,
 
     /// Height of the slides in pixels
-    #[arg(long, default_value = "720")]
+    #[arg(long, default_value = "1080")]
     height: u32,
 
     /// Timeout in milliseconds for browser operations

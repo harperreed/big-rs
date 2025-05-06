@@ -78,8 +78,8 @@ impl Config {
         timeout_ms: Option<u64>,
     ) -> RenderConfig {
         RenderConfig {
-            width: width.unwrap_or(1280),
-            height: height.unwrap_or(720),
+            width: width.unwrap_or(1920),
+            height: height.unwrap_or(1080),
             format: format.unwrap_or_else(|| "png".to_string()),
             base_name: base_name.unwrap_or_else(|| "slide".to_string()),
             timeout_ms: timeout_ms.unwrap_or(self.default_timeout_ms),
