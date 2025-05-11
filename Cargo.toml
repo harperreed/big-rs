@@ -2,6 +2,8 @@
 name = "big"
 version = "0.1.0"
 edition = "2024"
+description = "A command-line for generating presentations based on big.js"
+license = "MIT"
 
 [dependencies]
 clap = { version = "4.5.1", features = ["derive"] }
