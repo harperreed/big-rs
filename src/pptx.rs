@@ -92,6 +92,8 @@ pub fn generate_pptx(slides_dir: &Path, output_file: &Path, config: &PptxConfig)
     <Default Extension="jpg" ContentType="image/jpeg"/>
     <Default Extension="png" ContentType="image/png"/>
     <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
+    <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
+    <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
     <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
     <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
     {slides}
@@ -152,6 +154,12 @@ pub fn generate_pptx(slides_dir: &Path, output_file: &Path, config: &PptxConfig)
 "#,
     );
 
+    // Add relationship for slide master (must be before slides)
+    pres_rels.push_str(
+        r#"    <Relationship Id="rIdSM" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>
+"#,
+    );
+
     // Add relationship for each slide
     for (i, _) in slide_paths.iter().enumerate() {
         pres_rels.push_str(&format!(
@@ -167,14 +175,41 @@ pub fn generate_pptx(slides_dir: &Path, output_file: &Path, config: &PptxConfig)
     // Add ppt/presentation.xml
     info!("Creating PPTX structure: ppt/presentation.xml");
     zip.start_file("ppt/presentation.xml", FileOptions::default())?;
+    
+    // Determine correct slide size type
+    let slide_size_type = match config.aspect_ratio.as_str() {
+        "16:9" => "screen16x9",
+        "4:3" => "screen4x3",
+        _ => "screen16x9" // Default to 16:9
+    };
+    
     let presentation_xml = format!(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" 
+                xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" 
+                xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+                xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+    <p:sldMasterIdLst>
+        <p:sldMasterId id="2147483648" r:id="rIdSM"/>
+    </p:sldMasterIdLst>
     <p:sldIdLst>
 {slide_ids}
     </p:sldIdLst>
-    <p:sldSz cx="{cx}" cy="{cy}" type="screen4x3"/>
+    <p:sldSz cx="{cx}" cy="{cy}" type="{slide_size_type}"/>
     <p:notesSz cx="6858000" cy="9144000"/>
+    <p:defaultTextStyle>
+        <a:defPPr/>
+        <a:lvl1pPr marL="0" algn="l" defTabSz="914400" rtl="0" eaLnBrk="1" latinLnBrk="0" hangingPunct="1">
+            <a:defRPr sz="1800" kern="1200">
+                <a:solidFill>
+                    <a:schemeClr val="tx1"/>
+                </a:solidFill>
+                <a:latin typeface="+mn-lt"/>
+                <a:ea typeface="+mn-ea"/>
+                <a:cs typeface="+mn-cs"/>
+            </a:defRPr>
+        </a:lvl1pPr>
+    </p:defaultTextStyle>
 </p:presentation>"#,
         slide_ids = slide_paths
             .iter()
@@ -183,9 +218,93 @@ pub fn generate_pptx(slides_dir: &Path, output_file: &Path, config: &PptxConfig)
             .collect::<Vec<String>>()
             .join("\n"),
         cx = cx,
-        cy = cy
+        cy = cy,
+        slide_size_type = slide_size_type
     );
     zip.write_all(presentation_xml.as_bytes())?;
+    
+    // Add a basic slide master
+    info!("Creating slide master: ppt/slideMasters/slideMaster1.xml");
+    zip.start_file("ppt/slideMasters/slideMaster1.xml", FileOptions::default())?;
+    let slide_master_xml = format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" 
+             xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" 
+             xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+    <p:cSld>
+        <p:bg>
+            <p:bgRef idx="1001">
+                <a:schemeClr val="bg1"/>
+            </p:bgRef>
+        </p:bg>
+        <p:spTree>
+            <p:nvGrpSpPr>
+                <p:cNvPr id="1" name=""/>
+                <p:cNvGrpSpPr/>
+                <p:nvPr/>
+            </p:nvGrpSpPr>
+            <p:grpSpPr>
+                <a:xfrm>
+                    <a:off x="0" y="0"/>
+                    <a:ext cx="0" cy="0"/>
+                    <a:chOff x="0" y="0"/>
+                    <a:chExt cx="0" cy="0"/>
+                </a:xfrm>
+            </p:grpSpPr>
+        </p:spTree>
+    </p:cSld>
+    <p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>
+</p:sldMaster>"#
+    );
+    zip.write_all(slide_master_xml.as_bytes())?;
+    
+    // Add slide master relationships
+    info!("Creating slide master relationships: ppt/slideMasters/_rels/slideMaster1.xml.rels");
+    zip.start_file("ppt/slideMasters/_rels/slideMaster1.xml.rels", FileOptions::default())?;
+    let slide_master_rels = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+</Relationships>"#;
+    zip.write_all(slide_master_rels.as_bytes())?;
+    
+    // Add a basic slide layout
+    info!("Creating slide layout: ppt/slideLayouts/slideLayout1.xml");
+    zip.start_file("ppt/slideLayouts/slideLayout1.xml", FileOptions::default())?;
+    let slide_layout_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" 
+             xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" 
+             xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank">
+    <p:cSld name="Blank">
+        <p:spTree>
+            <p:nvGrpSpPr>
+                <p:cNvPr id="1" name=""/>
+                <p:cNvGrpSpPr/>
+                <p:nvPr/>
+            </p:nvGrpSpPr>
+            <p:grpSpPr>
+                <a:xfrm>
+                    <a:off x="0" y="0"/>
+                    <a:ext cx="0" cy="0"/>
+                    <a:chOff x="0" y="0"/>
+                    <a:chExt cx="0" cy="0"/>
+                </a:xfrm>
+            </p:grpSpPr>
+        </p:spTree>
+    </p:cSld>
+    <p:clrMapOvr>
+        <a:masterClrMapping/>
+    </p:clrMapOvr>
+</p:sldLayout>"#;
+    zip.write_all(slide_layout_xml.as_bytes())?;
+    
+    // Add slide layout relationships
+    info!("Creating slide layout relationships: ppt/slideLayouts/_rels/slideLayout1.xml.rels");
+    zip.start_file("ppt/slideLayouts/_rels/slideLayout1.xml.rels", FileOptions::default())?;
+    let slide_layout_rels = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/>
+</Relationships>"#;
+    zip.write_all(slide_layout_rels.as_bytes())?;
 
     // Process each slide
     for (i, slide_path) in slide_paths.iter().enumerate() {
@@ -227,6 +346,7 @@ pub fn generate_pptx(slides_dir: &Path, output_file: &Path, config: &PptxConfig)
             r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
     <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/{}"/>
+    <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
 </Relationships>"#,
             image_name
         );
@@ -257,8 +377,11 @@ pub fn generate_pptx(slides_dir: &Path, output_file: &Path, config: &PptxConfig)
         )?;
         let slide_xml = format!(
             r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
-    <p:cSld>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" 
+       xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" 
+       xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+    <p:cSld name="Slide {slide_num}">
         <p:spTree>
             <p:nvGrpSpPr>
                 <p:cNvPr id="1" name=""/>
@@ -275,14 +398,20 @@ pub fn generate_pptx(slides_dir: &Path, output_file: &Path, config: &PptxConfig)
             </p:grpSpPr>
             <p:pic>
                 <p:nvPicPr>
-                    <p:cNvPr id="2" name="Image"/>
+                    <p:cNvPr id="2" name="Slide Image {slide_num}"/>
                     <p:cNvPicPr>
                         <a:picLocks noChangeAspect="1"/>
                     </p:cNvPicPr>
                     <p:nvPr/>
                 </p:nvPicPr>
                 <p:blipFill>
-                    <a:blip r:embed="rId1"/>
+                    <a:blip r:embed="rId1">
+                        <a:extLst>
+                            <a:ext uri="{{28A0092B-C50C-407E-A947-70E740481C1C}}">
+                                <a14:useLocalDpi xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" val="0"/>
+                            </a:ext>
+                        </a:extLst>
+                    </a:blip>
                     <a:stretch>
                         <a:fillRect/>
                     </a:stretch>
@@ -304,7 +433,8 @@ pub fn generate_pptx(slides_dir: &Path, output_file: &Path, config: &PptxConfig)
     </p:clrMapOvr>
 </p:sld>"#,
             cx = cx,
-            cy = cy
+            cy = cy,
+            slide_num = slide_num
         );
         zip.write_all(slide_xml.as_bytes())?;
     }

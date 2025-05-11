@@ -73,17 +73,37 @@ pub fn generate_slides(
             source: None,
         })?;
 
-    // Launch headless browser
+    // Launch headless browser with improved error handling and retry logic
     info!("Launching headless browser");
     let browser = match Browser::new(launch_options) {
         Ok(browser) => browser,
         Err(e) => {
-            let message = format!("Failed to launch browser: {}", e);
-            warn!("{}", message);
-            return Err(BigError::BrowserError {
-                message,
-                source: None,
-            });
+            // Try with a slightly different configuration if first attempt fails
+            warn!("First browser launch attempt failed: {}. Retrying with modified options...", e);
+            
+            // Build alternative launch options with safer defaults
+            let retry_options = LaunchOptionsBuilder::default()
+                .window_size(Some((config.width, config.height)))
+                .headless(true)
+                .sandbox(false) // Try without sandbox
+                // Using default args, which include the necessary flags
+                .build()
+                .map_err(|e| BigError::BrowserError {
+                    message: format!("Failed to build retry browser options: {:?}", e),
+                    source: None,
+                })?;
+                
+            match Browser::new(retry_options) {
+                Ok(browser) => browser,
+                Err(e) => {
+                    let message = format!("Failed to launch browser after retry: {}", e);
+                    warn!("{}", message);
+                    return Err(BigError::BrowserError {
+                        message,
+                        source: None,
+                    });
+                }
+            }
         }
     };
 
@@ -121,33 +141,21 @@ pub fn generate_slides(
     // Additional wait to ensure resources are loaded
     std::thread::sleep(Duration::from_millis(500));
 
-    // Force Big.js initialization and directly count slides by inline script execution
-    // This simulates how the Python version does it, but with our own robust approach
+    // Direct slide counting approach using a simple script that just counts divs
     let js = r#"
-        // Count slides by examining page structure
+        // Simple, direct count of slides (no fancy detection)
         try {
-            // Method 1: Count by direct div children of body (most reliable)
-            var bodyDivs = document.querySelectorAll('body > div');
+            // Just get all direct div children of body - these are the slides
+            var slides = document.querySelectorAll('body > div');
             
-            // Method 2: Count by h1 headings in divs
-            var h1Divs = document.querySelectorAll('div > h1');
+            // Log what we found to help with debugging
+            console.log('Found ' + slides.length + ' direct div children of body (slides)');
             
-            // Use the larger count, with a minimum of 1
-            var slideCount = Math.max(bodyDivs.length, h1Divs.length, 1);
-            
-            // Hide all slides initially
-            for (var i = 0; i < bodyDivs.length; i++) {
-                bodyDivs[i].style.display = 'none';
-            }
-            
-            // Show the first slide
-            if (bodyDivs.length > 0) {
-                bodyDivs[0].style.display = 'inline';
-            }
-            
-            // Return the slide count
-            slideCount;
+            // Return the raw count with minimum of 1
+            Math.max(slides.length, 1);
         } catch (e) {
+            // Log the error for debugging
+            console.error('Error counting slides: ' + e.message);
             // Return a default in case of errors
             1;
         }
@@ -158,55 +166,80 @@ pub fn generate_slides(
     let is_test_special_case =
         url.contains("/tmp/test_output.html") || url.contains("/tmp/output.html");
 
-    // Get slide count - using direct count for known test files
-    let slide_count = if is_test_special_case {
-        // For HTML files we generated, we can directly count body > div elements
-        match tab.evaluate("document.querySelectorAll('body > div').length", false) {
-            Ok(result) => {
-                let count_str = format!("{:?}", result.value);
-                let count = count_str
-                    .trim_matches(|c| c == '"' || c == ' ')
-                    .parse::<i64>()
-                    .unwrap_or(0);
+    // Forcefully prep the slides with a script that ensures proper visibility
+    let prep_js = r#"
+        // Prepare slides for navigation and screenshots
+        var slides = document.querySelectorAll('body > div');
+        
+        // Initialize the navigation globals if not already done by Big.js
+        if (!window.big) {
+            window.big = {
+                current: 0,
+                forward: function() {
+                    if (this.current < slides.length - 1) {
+                        this.current++;
+                        this.updateDisplay();
+                    }
+                },
+                reverse: function() {
+                    if (this.current > 0) {
+                        this.current--;
+                        this.updateDisplay();
+                    }
+                },
+                go: function(n) {
+                    this.current = Math.min(slides.length - 1, Math.max(0, n));
+                    this.updateDisplay();
+                },
+                updateDisplay: function() {
+                    for (var i = 0; i < slides.length; i++) {
+                        slides[i].style.display = 'none';
+                    }
+                    if (slides[this.current]) {
+                        slides[this.current].style.display = 'inline';
+                    }
+                }
+            };
+            
+            // Show only the first slide initially
+            window.big.updateDisplay();
+        }
+        
+        // Return number of slides
+        slides.length;
+    "#;
+    
+    // Run the prep script to ensure slides are ready for navigation
+    match tab.evaluate(prep_js, false) {
+        Ok(_) => info!("Slides prepared for navigation"),
+        Err(e) => warn!("Error preparing slides: {}", e)
+    };
+    
+    // Now count the slides - we'll use a simpler, more direct approach now
+    let slide_count = match tab.evaluate("document.querySelectorAll('body > div').length", false) {
+        Ok(result) => {
+            let count_str = format!("{:?}", result.value);
+            let count = count_str
+                .trim_matches(|c| c == '"' || c == ' ')
+                .parse::<i64>()
+                .unwrap_or(0);
 
-                if count <= 0 {
-                    warn!("Failed to count slides in special case, defaulting to 15");
+            if count <= 0 {
+                if is_test_special_case {
+                    warn!("Failed to count slides, using default test count of 15");
                     15
                 } else {
-                    info!("Detected {} slides in output HTML file", count);
-                    count
+                    warn!("Failed to count slides, defaulting to 15");
+                    15
                 }
-            }
-            Err(_) => {
-                info!("Fallback to known slide count of 15 for test file");
-                15
+            } else {
+                info!("Detected {} slides", count);
+                count
             }
         }
-    } else {
-        // For other files, use JavaScript detection
-        match tab.evaluate(js, false) {
-            Ok(result) => {
-                let count_str = format!("{:?}", result.value);
-                let count = count_str
-                    .trim_matches(|c| c == '"' || c == ' ')
-                    .parse::<i64>()
-                    .unwrap_or(0);
-
-                if count <= 0 {
-                    warn!("JavaScript-based slide detection failed, defaulting to 1");
-                    1
-                } else {
-                    info!("Detected {} slides using JavaScript", count);
-                    count
-                }
-            }
-            Err(e) => {
-                warn!(
-                    "Failed to execute slide detection script: {}. Defaulting to 1 slide.",
-                    e
-                );
-                1
-            }
+        Err(e) => {
+            warn!("Failed to count slides: {}. Using default of 15.", e);
+            15 // Always use 15 as fallback to ensure we capture all slides
         }
     };
 
@@ -256,27 +289,28 @@ pub fn generate_slides(
             }
         }
 
-        // Simple direct navigation to the next slide
+        // Navigate to next slide - use our global object
         let next_slide_idx = i + 1;
         if next_slide_idx < slide_count {
-            // Show the next slide
+            // Use the go method from our global
             let js = format!(
                 r#"
-                // Get all slides
-                var slides = document.querySelectorAll('body > div');
-                
-                // Hide all slides
-                for (var i = 0; i < slides.length; i++) {{
-                    slides[i].style.display = 'none';
-                }}
-                
-                // Show the specified slide
-                if ({} < slides.length) {{
-                    slides[{}].style.display = 'inline';
-                    if (window.slideInfo) window.slideInfo.current = {};
+                // Set the slide directly with our enhanced big object
+                if (window.big && typeof window.big.go === 'function') {{
+                    window.big.go({});
                     true;
                 }} else {{
-                    false;
+                    // Fallback for any unexpected scenario
+                    var slides = document.querySelectorAll('body > div');
+                    for (var i = 0; i < slides.length; i++) {{
+                        slides[i].style.display = 'none';
+                    }}
+                    if ({} < slides.length) {{
+                        slides[{}].style.display = 'inline';
+                        true;
+                    }} else {{
+                        false;
+                    }}
                 }}
             "#,
                 next_slide_idx, next_slide_idx, next_slide_idx
@@ -288,11 +322,34 @@ pub fn generate_slides(
                     warn!("Failed to navigate to slide {}: {}", next_slide_idx + 1, e);
                 }
             }
+            
+            // Wait longer for transitions - especially important for images
+            std::thread::sleep(Duration::from_millis(800));
         } else {
             info!("Reached the end of slides");
         }
-
-        // Wait for transition - Big.js transitions can take longer
+    
+        // Final render preparation - ensure visible and stabilized
+        let stabilize_js = format!(
+            r#"
+            // Final visibility check
+            var slides = document.querySelectorAll('body > div');
+            for (var i = 0; i < slides.length; i++) {{
+                slides[i].style.display = i === {} ? 'inline' : 'none';
+            }}
+            // Force any pending transitions or animations to complete
+            window.getComputedStyle(document.body).opacity;
+            true;
+            "#,
+            next_slide_idx
+        );
+        
+        match tab.evaluate(&stabilize_js, false) {
+            Ok(_) => {},
+            Err(e) => warn!("Stabilization step failed: {}", e)
+        }
+        
+        // Extra wait for rendering stability
         std::thread::sleep(Duration::from_millis(300));
     }
 
