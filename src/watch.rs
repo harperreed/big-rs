@@ -81,7 +81,9 @@ impl Default for WatchConfig {
     }
 }
 
-// Not using this type alias currently, but keeping for future refactoring
+// Not using this type alias currently, but keeping for future refactoring.
+// On non-macOS platforms `FsEventWatcher` is not available, so guard it.
+#[cfg(target_os = "macos")]
 #[allow(dead_code)]
 type WatchDebouncer = Debouncer<notify::FsEventWatcher, notify_debouncer_full::FileIdMap>;
 
@@ -435,7 +437,7 @@ pub fn watch_markdown(config: WatchConfig, app_config: &AppConfig) -> Result<()>
         .watch(&abs_watch_path, RecursiveMode::Recursive)
         .map_err(|e| {
             BigError::WatchError(format!(
-                "Failed to start watching directory: {} about {:?}",
+                "Failed to start watching directory: {} at {:?}",
                 e,
                 [abs_watch_path]
             ))

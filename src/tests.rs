@@ -448,3 +448,23 @@ fn test_slide_with_html_content() {
         "HTML should preserve ul and li tags"
     );
 }
+
+#[test]
+fn test_frontmatter_without_blank_line() {
+    // Frontmatter immediately followed by content
+    let markdown_content = "% Title\n% Author\n% Date\n# Slide 1\n\nContent";
+    let markdown_file = create_temp_markdown_file(markdown_content);
+
+    let result = html::generate_html_without_reload(
+        &markdown_file.path().to_path_buf(),
+        &[],
+        &[],
+        true,
+    );
+
+    assert!(result.is_ok());
+    let html = result.unwrap();
+
+    // Content should not be stripped after the frontmatter
+    assert!(html.contains("<div>Slide 1") && html.contains("Content"));
+}

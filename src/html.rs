@@ -134,12 +134,11 @@ fn parse_frontmatter(content: &str) -> (String, String, String, String) {
             if lines[2].starts_with("% ") {
                 date = lines[2].trim_start_matches("% ").trim().to_string();
 
-                // Find the first empty line after frontmatter
+                // Skip optional blank lines after the frontmatter
                 let mut start_idx = 3;
-                while start_idx < lines.len() && !lines[start_idx].trim().is_empty() {
+                while start_idx < lines.len() && lines[start_idx].trim().is_empty() {
                     start_idx += 1;
                 }
-                start_idx = std::cmp::min(start_idx + 1, lines.len());
 
                 // Return the rest of the content
                 return (title, author, date, lines[start_idx..].join("\n"));

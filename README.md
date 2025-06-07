@@ -80,7 +80,7 @@ big generate-html -i presentation.md -o presentation.html --css style.css --js n
 ### 2. Generate Slides from HTML
 
 ```bash
-big generate-slides -i presentation.html -o slides_directory [--base-name slide] [--format png] [--width 1280] [--height 720]
+big generate-slides -i presentation.html -o slides_directory [--base-name slide] [--format png] [--width 1920] [--height 1080]
 ```
 
 #### Options
@@ -89,8 +89,8 @@ big generate-slides -i presentation.html -o slides_directory [--base-name slide]
 - `-o, --output-dir`: Directory to output slide images
 - `--base-name`: Base filename for slides (default: "slide")
 - `--format`: Format for the slide images (default: "png")
-- `--width`: Width of the slides in pixels (default: 1280)
-- `--height`: Height of the slides in pixels (default: 720)
+- `--width`: Width of the slides in pixels (default: 1920)
+- `--height`: Height of the slides in pixels (default: 1080)
 
 #### Example
 
