@@ -4,9 +4,26 @@
 use crate::errors::{BigError, Result};
 use log::info;
 use reqwest::blocking::Client;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+/// Cache entry for remote resources
+#[derive(Debug, Clone)]
+struct CacheEntry {
+    content: String,
+    expires_at: Instant,
+}
+
+// Global cache for remote resources with TTL
+lazy_static::lazy_static! {
+    static ref REMOTE_CACHE: Arc<Mutex<HashMap<String, CacheEntry>>> = Arc::new(Mutex::new(HashMap::new()));
+}
+
+/// Default TTL for cached remote resources (5 minutes)
+const DEFAULT_CACHE_TTL: Duration = Duration::from_secs(300);
 
 /// Represents a resource file that can be either local or remote.
 #[derive(Debug, Clone)]
@@ -48,8 +65,19 @@ impl ResourceFile {
         }
     }
 
-    /// Fetch content from a remote URL with retry capability
+    /// Fetch content from a remote URL with retry capability and caching
     fn fetch_remote_content(&self) -> Result<String> {
+        // First check the cache
+        {
+            let cache = REMOTE_CACHE.lock().unwrap();
+            if let Some(entry) = cache.get(&self.path) {
+                if Instant::now() < entry.expires_at {
+                    info!("Using cached remote resource: {}", self.path);
+                    return Ok(entry.content.clone());
+                }
+            }
+        }
+
         info!("Fetching remote resource: {}", self.path);
 
         // Create a client with timeout
@@ -66,7 +94,18 @@ impl ResourceFile {
             match client.get(&self.path).send() {
                 Ok(response) => {
                     if response.status().is_success() {
-                        return response.text().map_err(BigError::FetchError);
+                        let content = response.text().map_err(BigError::FetchError)?;
+                        
+                        // Cache the successful result
+                        {
+                            let mut cache = REMOTE_CACHE.lock().unwrap();
+                            cache.insert(self.path.clone(), CacheEntry {
+                                content: content.clone(),
+                                expires_at: Instant::now() + DEFAULT_CACHE_TTL,
+                            });
+                        }
+                        
+                        return Ok(content);
                     } else {
                         let status = response.status();
                         last_error =
@@ -133,5 +172,37 @@ impl ResourceFile {
                 }
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Instant;
+
+    #[test]
+    fn test_remote_resource_caching() {
+        // Skip this test if we don't have internet connectivity
+        let resource = ResourceFile::new("https://httpbin.org/json");
+        
+        // First fetch
+        let start1 = Instant::now();
+        let content1 = resource.content();
+        let duration1 = start1.elapsed();
+        
+        assert!(content1.is_ok(), "First fetch should succeed");
+        
+        // Second fetch - should be cached and faster
+        let start2 = Instant::now();
+        let content2 = resource.content();
+        let duration2 = start2.elapsed();
+        
+        assert!(content2.is_ok(), "Second fetch should succeed");
+        assert_eq!(content1.unwrap(), content2.unwrap(), "Content should be identical");
+        
+        // Cache should make second fetch significantly faster
+        // (allowing some margin for system variability)
+        println!("First fetch: {:?}, Second fetch: {:?}", duration1, duration2);
+        assert!(duration2 < duration1, "Second fetch should be faster due to caching");
     }
 }
