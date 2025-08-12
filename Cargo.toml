@@ -1,5 +1,5 @@
 [package]
-name = "big-presentation"
+name = "big"
 version = "0.1.0"
 edition = "2024"
 description = "A command-line for generating presentations based on big.js"
