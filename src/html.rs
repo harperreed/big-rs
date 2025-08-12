@@ -3,7 +3,7 @@
 
 use crate::errors::{BigError, Result};
 use crate::resources::ResourceFile;
-use comrak::{ComrakOptions, markdown_to_html};
+use comrak::{markdown_to_html, ComrakOptions};
 use log::info;
 use std::fs;
 use std::path::Path;

@@ -5,15 +5,15 @@ use log::{debug, error, info};
 use std::fs;
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, mpsc};
+use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Duration;
 
 use notify::{RecursiveMode, Watcher};
-use notify_debouncer_full::{Debouncer, new_debouncer};
+use notify_debouncer_full::{new_debouncer, Debouncer};
 use parking_lot::Mutex;
 use tiny_http::{Header, Response, Server, StatusCode};
-use tungstenite::{Message, accept};
+use tungstenite::{accept, Message};
 
 use crate::config::Config as AppConfig;
 use crate::errors::{BigError, Result};
@@ -81,9 +81,23 @@ impl Default for WatchConfig {
     }
 }
 
-// Not using this type alias currently, but keeping for future refactoring
+// Cross-platform debouncer type alias for future refactoring
 #[allow(dead_code)]
+#[cfg(target_os = "macos")]
 type WatchDebouncer = Debouncer<notify::FsEventWatcher, notify_debouncer_full::FileIdMap>;
+
+#[allow(dead_code)]
+#[cfg(target_os = "linux")]
+type WatchDebouncer = Debouncer<notify::INotifyWatcher, notify_debouncer_full::FileIdMap>;
+
+#[allow(dead_code)]
+#[cfg(target_os = "windows")]
+type WatchDebouncer =
+    Debouncer<notify::ReadDirectoryChangesWatcher, notify_debouncer_full::FileIdMap>;
+
+#[allow(dead_code)]
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+type WatchDebouncer = Debouncer<notify::PollWatcher, notify_debouncer_full::FileIdMap>;
 
 /// Structure to manage active WebSocket connections
 struct WebSocketManager {
@@ -170,28 +184,28 @@ fn auto_reload_js(ws_port: u16) -> String {
     const ws_port = {};
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${{wsProtocol}}//${{window.location.hostname}}:${{ws_port}}`;
-    
+
     let socket;
     let reconnectInterval;
-    
+
     function connect() {{
         socket = new WebSocket(wsUrl);
-        
+
         socket.onopen = function() {{
             console.log('Connected to auto-reload server');
             clearInterval(reconnectInterval);
         }};
-        
+
         socket.onclose = function() {{
             console.log('Disconnected from auto-reload server. Attempting to reconnect...');
             reconnectInterval = setInterval(connect, 3000);
         }};
-        
+
         socket.onerror = function(error) {{
             console.error('WebSocket error:', error);
             socket.close();
         }};
-        
+
         socket.onmessage = function(event) {{
             console.log('Received message:', event.data);
             if (event.data === 'reload') {{
@@ -200,7 +214,7 @@ fn auto_reload_js(ws_port: u16) -> String {
             }}
         }};
     }}
-    
+
     // Start connection
     connect();
 }})();

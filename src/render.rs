@@ -79,8 +79,11 @@ pub fn generate_slides(
         Ok(browser) => browser,
         Err(e) => {
             // Try with a slightly different configuration if first attempt fails
-            warn!("First browser launch attempt failed: {}. Retrying with modified options...", e);
-            
+            warn!(
+                "First browser launch attempt failed: {}. Retrying with modified options...",
+                e
+            );
+
             // Build alternative launch options with safer defaults
             let retry_options = LaunchOptionsBuilder::default()
                 .window_size(Some((config.width, config.height)))
@@ -92,7 +95,7 @@ pub fn generate_slides(
                     message: format!("Failed to build retry browser options: {:?}", e),
                     source: None,
                 })?;
-                
+
             match Browser::new(retry_options) {
                 Ok(browser) => browser,
                 Err(e) => {
@@ -142,15 +145,15 @@ pub fn generate_slides(
     std::thread::sleep(Duration::from_millis(500));
 
     // Direct slide counting approach using a simple script that just counts divs
-    let js = r#"
+    let _js = r#"
         // Simple, direct count of slides (no fancy detection)
         try {
             // Just get all direct div children of body - these are the slides
             var slides = document.querySelectorAll('body > div');
-            
+
             // Log what we found to help with debugging
             console.log('Found ' + slides.length + ' direct div children of body (slides)');
-            
+
             // Return the raw count with minimum of 1
             Math.max(slides.length, 1);
         } catch (e) {
@@ -170,7 +173,7 @@ pub fn generate_slides(
     let prep_js = r#"
         // Prepare slides for navigation and screenshots
         var slides = document.querySelectorAll('body > div');
-        
+
         // Initialize the navigation globals if not already done by Big.js
         if (!window.big) {
             window.big = {
@@ -200,21 +203,21 @@ pub fn generate_slides(
                     }
                 }
             };
-            
+
             // Show only the first slide initially
             window.big.updateDisplay();
         }
-        
+
         // Return number of slides
         slides.length;
     "#;
-    
+
     // Run the prep script to ensure slides are ready for navigation
     match tab.evaluate(prep_js, false) {
         Ok(_) => info!("Slides prepared for navigation"),
-        Err(e) => warn!("Error preparing slides: {}", e)
+        Err(e) => warn!("Error preparing slides: {}", e),
     };
-    
+
     // Now count the slides - we'll use a simpler, more direct approach now
     let slide_count = match tab.evaluate("document.querySelectorAll('body > div').length", false) {
         Ok(result) => {
@@ -322,13 +325,13 @@ pub fn generate_slides(
                     warn!("Failed to navigate to slide {}: {}", next_slide_idx + 1, e);
                 }
             }
-            
+
             // Wait longer for transitions - especially important for images
             std::thread::sleep(Duration::from_millis(800));
         } else {
             info!("Reached the end of slides");
         }
-    
+
         // Final render preparation - ensure visible and stabilized
         let stabilize_js = format!(
             r#"
@@ -343,12 +346,12 @@ pub fn generate_slides(
             "#,
             next_slide_idx
         );
-        
+
         match tab.evaluate(&stabilize_js, false) {
-            Ok(_) => {},
-            Err(e) => warn!("Stabilization step failed: {}", e)
+            Ok(_) => {}
+            Err(e) => warn!("Stabilization step failed: {}", e),
         }
-        
+
         // Extra wait for rendering stability
         std::thread::sleep(Duration::from_millis(300));
     }

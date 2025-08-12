@@ -15,10 +15,10 @@ pub mod watch;
 pub use config::Config;
 pub use errors::{BigError, Result};
 pub use html::{generate_html, write_html_to_file};
-pub use pptx::{PptxConfig, find_slide_images, generate_pptx};
-pub use render::{RenderConfig, generate_slides};
+pub use pptx::{find_slide_images, generate_pptx, PptxConfig};
+pub use render::{generate_slides, RenderConfig};
 pub use resources::ResourceFile;
-pub use watch::{WatchConfig, watch_markdown};
+pub use watch::{watch_markdown, WatchConfig};
 
 #[cfg(test)]
 mod tests;
