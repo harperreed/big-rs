@@ -1,9 +1,17 @@
 [package]
 name = "big"
-version = "0.1.0"
-edition = "2024"
-description = "A command-line for generating presentations based on big.js"
+version = "0.1.1"
+edition = "2021"
+description = "A command-line tool for generating professional PowerPoint presentations from Markdown files"
 license = "MIT"
+authors = ["Harper Reed <harper@nata2.org>"]
+repository = "https://github.com/harperreed/big-rs"
+homepage = "https://github.com/harperreed/big-rs"
+documentation = "https://docs.rs/big"
+readme = "README.md"
+keywords = ["presentation", "markdown", "powerpoint", "slides", "cli"]
+categories = ["command-line-utilities", "multimedia", "text-processing"]
+rust-version = "1.70"
 
 [dependencies]
 clap = { version = "4.5.1", features = ["derive"] }
