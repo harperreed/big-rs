@@ -5,9 +5,9 @@ use clap::{Args, Parser, Subcommand};
 use log::{error, info};
 use std::path::PathBuf;
 
-use big::errors::BigError;
-use big::errors::Result as BigResult;
-use big::utils;
+use big_slides::errors::BigError;
+use big_slides::errors::Result as BigResult;
+use big_slides::utils;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -122,9 +122,9 @@ struct WatchArgs {
     #[arg(short, long)]
     input: PathBuf,
 
-    /// Path to output HTML file
+    /// Path to output HTML file (defaults to input filename with .html extension)
     #[arg(short, long)]
-    output: PathBuf,
+    output: Option<PathBuf>,
 
     /// CSS files to include (local paths or URLs)
     #[arg(long, value_delimiter = ',')]
@@ -151,7 +151,7 @@ struct WatchArgs {
     debounce_ms: u64,
 
     /// Start a local web server to serve the HTML
-    #[arg(long)]
+    #[arg(long, default_value = "true")]
     serve: bool,
 
     /// Port for local web server
@@ -159,7 +159,7 @@ struct WatchArgs {
     port: u16,
 
     /// Enable auto-reload on file changes
-    #[arg(long)]
+    #[arg(long, default_value = "true")]
     auto_reload: bool,
 
     /// WebSocket port for auto-reload (defaults to HTTP port + 1)
@@ -181,7 +181,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::new().filter_level(log_level).init();
 
     // Load configuration
-    let mut config = big::Config::from_env();
+    let mut config = big_slides::Config::from_env();
 
     // Override with command line options
     if let Some(browser_path) = cli.browser_path {
@@ -237,7 +237,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Execute the generate-html command
-fn generate_html(args: &GenerateHtmlArgs, config: &big::Config) -> BigResult<()> {
+fn generate_html(args: &GenerateHtmlArgs, config: &big_slides::Config) -> BigResult<()> {
     info!("Executing generate-html command...");
 
     // Validate input file exists
@@ -250,12 +250,12 @@ fn generate_html(args: &GenerateHtmlArgs, config: &big::Config) -> BigResult<()>
     let embed_resources = args.mode.to_lowercase() != "link";
 
     // Convert CSS files to ResourceFile structs
-    let css_files: Vec<big::ResourceFile> = match args.css.as_ref() {
+    let css_files: Vec<big_slides::ResourceFile> = match args.css.as_ref() {
         Some(files) if !files.is_empty() => {
             // User-specified CSS files
             files
                 .iter()
-                .map(|path| big::ResourceFile::new(path))
+                .map(|path| big_slides::ResourceFile::new(path))
                 .collect()
         }
         _ => {
@@ -264,17 +264,17 @@ fn generate_html(args: &GenerateHtmlArgs, config: &big::Config) -> BigResult<()>
                 "No CSS files specified, using default CSS: {}",
                 config.default_css
             );
-            vec![big::ResourceFile::new(&config.default_css)]
+            vec![big_slides::ResourceFile::new(&config.default_css)]
         }
     };
 
     // Convert JS files to ResourceFile structs
-    let js_files: Vec<big::ResourceFile> = match args.js.as_ref() {
+    let js_files: Vec<big_slides::ResourceFile> = match args.js.as_ref() {
         Some(files) if !files.is_empty() => {
             // User-specified JS files
             files
                 .iter()
-                .map(|path| big::ResourceFile::new(path))
+                .map(|path| big_slides::ResourceFile::new(path))
                 .collect()
         }
         _ => {
@@ -283,16 +283,16 @@ fn generate_html(args: &GenerateHtmlArgs, config: &big::Config) -> BigResult<()>
                 "No JavaScript files specified, using default JS: {}",
                 config.default_js
             );
-            vec![big::ResourceFile::new(&config.default_js)]
+            vec![big_slides::ResourceFile::new(&config.default_js)]
         }
     };
 
     // Generate HTML content
     let html_content =
-        big::html::generate_html(&args.input, &css_files, &js_files, embed_resources, None)?;
+        big_slides::html::generate_html(&args.input, &css_files, &js_files, embed_resources, None)?;
 
     // Write the HTML content to the output file
-    big::html::write_html_to_file(&html_content, &args.output)?;
+    big_slides::html::write_html_to_file(&html_content, &args.output)?;
 
     info!("HTML generated successfully: {:?}", args.output);
     println!("HTML generated successfully: {:?}", args.output);
@@ -300,7 +300,7 @@ fn generate_html(args: &GenerateHtmlArgs, config: &big::Config) -> BigResult<()>
 }
 
 /// Execute the generate-slides command
-fn generate_slides(args: &GenerateSlidesArgs, config: &big::Config) -> BigResult<()> {
+fn generate_slides(args: &GenerateSlidesArgs, config: &big_slides::Config) -> BigResult<()> {
     info!("Executing generate-slides command...");
 
     // Validate input file exists
@@ -322,7 +322,8 @@ fn generate_slides(args: &GenerateSlidesArgs, config: &big::Config) -> BigResult
     );
 
     // Generate slides (screenshots)
-    let output_files = big::render::generate_slides(&args.input, &args.output_dir, &render_config)?;
+    let output_files =
+        big_slides::render::generate_slides(&args.input, &args.output_dir, &render_config)?;
 
     info!("Generated {} slides", output_files.len());
     println!("Slides generated successfully: {:?}", args.output_dir);
@@ -330,7 +331,7 @@ fn generate_slides(args: &GenerateSlidesArgs, config: &big::Config) -> BigResult
 }
 
 /// Execute the generate-pptx command
-fn generate_pptx(args: &GeneratePptxArgs, config: &big::Config) -> BigResult<()> {
+fn generate_pptx(args: &GeneratePptxArgs, config: &big_slides::Config) -> BigResult<()> {
     info!("Executing generate-pptx command...");
 
     // Validate input directory exists
@@ -347,7 +348,7 @@ fn generate_pptx(args: &GeneratePptxArgs, config: &big::Config) -> BigResult<()>
     );
 
     // Generate PowerPoint presentation from images
-    big::pptx::generate_pptx(&args.input_dir, &args.output, &pptx_config)?;
+    big_slides::pptx::generate_pptx(&args.input_dir, &args.output, &pptx_config)?;
 
     info!("PPTX generated successfully: {:?}", args.output);
     println!("PPTX generated successfully: {:?}", args.output);
@@ -355,14 +356,24 @@ fn generate_pptx(args: &GeneratePptxArgs, config: &big::Config) -> BigResult<()>
 }
 
 /// Execute the watch command
-fn watch(args: &WatchArgs, config: &big::Config) -> BigResult<()> {
+fn watch(args: &WatchArgs, config: &big_slides::Config) -> BigResult<()> {
     info!("Executing watch command...");
 
     // Validate input file exists
     utils::validate_file_exists(&args.input)?;
 
+    // Generate output path if not provided
+    let output_path = match &args.output {
+        Some(path) => path.clone(),
+        None => {
+            let mut output = args.input.clone();
+            output.set_extension("html");
+            output
+        }
+    };
+
     // Ensure parent directory for output exists
-    utils::ensure_parent_directory_exists(&args.output)?;
+    utils::ensure_parent_directory_exists(&output_path)?;
 
     // If slides output is specified, ensure that directory exists
     if let Some(slides_dir) = &args.slides_dir {
@@ -379,12 +390,12 @@ fn watch(args: &WatchArgs, config: &big::Config) -> BigResult<()> {
     let embed_resources = args.mode.to_lowercase() != "link";
 
     // Convert CSS files to ResourceFile structs
-    let css_files: Vec<big::ResourceFile> = match args.css.as_ref() {
+    let css_files: Vec<big_slides::ResourceFile> = match args.css.as_ref() {
         Some(files) if !files.is_empty() => {
             // User-specified CSS files
             files
                 .iter()
-                .map(|path| big::ResourceFile::new(path))
+                .map(|path| big_slides::ResourceFile::new(path))
                 .collect()
         }
         _ => {
@@ -393,17 +404,17 @@ fn watch(args: &WatchArgs, config: &big::Config) -> BigResult<()> {
                 "No CSS files specified, using default CSS: {}",
                 config.default_css
             );
-            vec![big::ResourceFile::new(&config.default_css)]
+            vec![big_slides::ResourceFile::new(&config.default_css)]
         }
     };
 
     // Convert JS files to ResourceFile structs
-    let js_files: Vec<big::ResourceFile> = match args.js.as_ref() {
+    let js_files: Vec<big_slides::ResourceFile> = match args.js.as_ref() {
         Some(files) if !files.is_empty() => {
             // User-specified JS files
             files
                 .iter()
-                .map(|path| big::ResourceFile::new(path))
+                .map(|path| big_slides::ResourceFile::new(path))
                 .collect()
         }
         _ => {
@@ -412,14 +423,14 @@ fn watch(args: &WatchArgs, config: &big::Config) -> BigResult<()> {
                 "No JavaScript files specified, using default JS: {}",
                 config.default_js
             );
-            vec![big::ResourceFile::new(&config.default_js)]
+            vec![big_slides::ResourceFile::new(&config.default_js)]
         }
     };
 
     // Create watch configuration
-    let watch_config = big::WatchConfig {
+    let watch_config = big_slides::WatchConfig {
         markdown_path: args.input.clone(),
-        html_output: args.output.clone(),
+        html_output: output_path.clone(),
         slides_output_dir: args.slides_dir.clone(),
         pptx_output: args.pptx_output.clone(),
         css_files,
@@ -433,5 +444,5 @@ fn watch(args: &WatchArgs, config: &big::Config) -> BigResult<()> {
     };
 
     // Start watching
-    big::watch_markdown(watch_config, config)
+    big_slides::watch_markdown(watch_config, config)
 }
