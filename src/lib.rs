@@ -9,6 +9,7 @@ pub mod pptx;
 pub mod render;
 pub mod resources;
 pub mod utils;
+pub mod tui;
 pub mod watch;
 
 // Reexport common types and functions

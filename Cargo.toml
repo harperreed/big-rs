@@ -25,6 +25,9 @@ tungstenite = "0.21.0"
 url = "2.4.1"
 parking_lot = "0.12.1"
 lazy_static = "1.4.0"
+boba = { git = "https://github.com/2389-research/boba.git" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [dev-dependencies]
 tempfile = "3.9.0"
