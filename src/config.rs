@@ -8,6 +8,7 @@ use std::env;
 use std::path::PathBuf;
 
 /// Global configuration for the application
+#[derive(Clone)]
 pub struct Config {
     pub browser_path: Option<String>,
     pub html_template_path: Option<PathBuf>,

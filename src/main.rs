@@ -165,6 +165,14 @@ struct WatchArgs {
     /// WebSocket port for auto-reload (defaults to HTTP port + 1)
     #[arg(long)]
     ws_port: Option<u16>,
+
+    /// Enable TUI dashboard
+    #[arg(long)]
+    tui: bool,
+
+    /// Estimated minutes per slide for time calculation
+    #[arg(long, default_value = "2.0")]
+    minutes_per_slide: f64,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -416,6 +424,10 @@ fn watch(args: &WatchArgs, config: &big::Config) -> BigResult<()> {
         }
     };
 
+    // Auto-enable serve and auto-reload when TUI is active
+    let serve = args.serve || args.tui;
+    let auto_reload = args.auto_reload || args.tui;
+
     // Create watch configuration
     let watch_config = big::WatchConfig {
         markdown_path: args.input.clone(),
@@ -426,12 +438,18 @@ fn watch(args: &WatchArgs, config: &big::Config) -> BigResult<()> {
         js_files,
         embed_resources,
         debounce_ms: args.debounce_ms,
-        serve: args.serve,
+        serve,
         port: args.port,
-        auto_reload: args.auto_reload,
+        auto_reload,
         ws_port: args.ws_port,
+        tui: args.tui,
+        minutes_per_slide: args.minutes_per_slide,
     };
 
-    // Start watching
-    big::watch_markdown(watch_config, config)
+    // Route to TUI dashboard or standard watch mode
+    if args.tui {
+        big::tui::run_dashboard(watch_config, config.clone())
+    } else {
+        big::watch_markdown(watch_config, config)
+    }
 }

@@ -16,12 +16,14 @@ use tiny_http::{Header, Response, Server, StatusCode};
 use tungstenite::{Message, accept};
 
 use crate::config::Config as AppConfig;
+use crate::diff;
 use crate::errors::{BigError, Result};
 use crate::html;
 use crate::pptx;
 use crate::render;
 use crate::resources::ResourceFile;
 use crate::utils;
+use crate::watch_events::WatchEvent;
 
 /// Configuration for watch mode
 pub struct WatchConfig {
@@ -60,6 +62,12 @@ pub struct WatchConfig {
 
     /// WebSocket port for auto-reload (defaults to HTTP port + 1)
     pub ws_port: Option<u16>,
+
+    /// Whether to enable TUI dashboard
+    pub tui: bool,
+
+    /// Estimated minutes per slide for time calculation
+    pub minutes_per_slide: f64,
 }
 
 impl Default for WatchConfig {
@@ -77,6 +85,8 @@ impl Default for WatchConfig {
             port: 8080,
             auto_reload: false,
             ws_port: None,
+            tui: false,
+            minutes_per_slide: 2.0,
         }
     }
 }
@@ -479,8 +489,7 @@ pub fn watch_markdown(config: WatchConfig, app_config: &AppConfig) -> Result<()>
     let mut last_processed = std::time::Instant::now();
 
     // Store previous markdown content for diffing to detect which slide changed
-    let mut previous_content =
-        std::fs::read_to_string(&config.markdown_path).unwrap_or_default();
+    let mut previous_content = std::fs::read_to_string(&config.markdown_path).unwrap_or_default();
 
     // Process events
     for result in rx {
@@ -526,9 +535,7 @@ pub fn watch_markdown(config: WatchConfig, app_config: &AppConfig) -> Result<()>
                                 );
                                 let reload_msg = match changed_slide {
                                     Some(slide) => {
-                                        crate::watch_events::ReloadMessage::reload_with_focus(
-                                            slide,
-                                        )
+                                        crate::watch_events::ReloadMessage::reload_with_focus(slide)
                                     }
                                     None => crate::watch_events::ReloadMessage::reload(),
                                 };
@@ -665,4 +672,220 @@ fn regenerate_outputs(
     }
 
     Ok(())
+}
+
+/// Run the watch backend in a blocking thread, sending events through a tokio channel.
+/// This performs initial generation, starts servers, watches for file changes,
+/// and sends WatchEvents to the TUI dashboard through the provided sender.
+pub(crate) fn run_watch_backend(
+    config: WatchConfig,
+    app_config: &AppConfig,
+    event_tx: boba::tokio::sync::mpsc::UnboundedSender<WatchEvent>,
+) {
+    // Validate input file exists
+    if let Err(e) = utils::validate_file_exists(&config.markdown_path) {
+        let _ = event_tx.send(WatchEvent::RegenerationFailed {
+            error: format!("Input file validation failed: {}", e),
+        });
+        return;
+    }
+
+    // Calculate WebSocket port if auto-reload is enabled
+    let ws_port = if config.auto_reload {
+        Some(config.ws_port.unwrap_or(config.port + 1))
+    } else {
+        None
+    };
+
+    // Initial generation
+    let _ = event_tx.send(WatchEvent::RegenerationStarted {
+        timestamp: std::time::Instant::now(),
+    });
+
+    let start_time = std::time::Instant::now();
+    match regenerate_outputs(&config, app_config, ws_port) {
+        Ok(_) => {
+            let markdown_content =
+                std::fs::read_to_string(&config.markdown_path).unwrap_or_default();
+            let slide_count = diff::count_slides(&markdown_content);
+            let slide_titles = diff::extract_slide_titles(&markdown_content);
+
+            let _ = event_tx.send(WatchEvent::RegenerationCompleted {
+                slide_count,
+                slide_titles: slide_titles.clone(),
+                duration_ms: start_time.elapsed().as_millis() as u64,
+                changed_slide: None,
+            });
+
+            // Send initial stats
+            let _ = event_tx.send(WatchEvent::InitialStats {
+                slide_count,
+                slide_titles,
+                markdown_path: config.markdown_path.clone(),
+                html_output: config.html_output.clone(),
+            });
+        }
+        Err(e) => {
+            let _ = event_tx.send(WatchEvent::RegenerationFailed {
+                error: format!("{}", e),
+            });
+        }
+    }
+
+    // Start local server if requested
+    let ws_manager = if config.serve {
+        match start_server(
+            config.html_output.clone(),
+            config.port,
+            config.auto_reload,
+            ws_port,
+        ) {
+            Ok((_server, manager)) => {
+                let _ = event_tx.send(WatchEvent::ServerStatus {
+                    http_port: config.port,
+                    ws_port,
+                    connected_clients: 0,
+                });
+                manager
+            }
+            Err(e) => {
+                let _ = event_tx.send(WatchEvent::RegenerationFailed {
+                    error: format!("Failed to start server: {}", e),
+                });
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Create a channel to receive file system events
+    let (tx, rx) = mpsc::channel();
+
+    // Create debouncer for file system events
+    let mut debouncer = match new_debouncer(Duration::from_millis(config.debounce_ms), None, tx) {
+        Ok(d) => d,
+        Err(e) => {
+            let _ = event_tx.send(WatchEvent::RegenerationFailed {
+                error: format!("Failed to create file watcher: {}", e),
+            });
+            return;
+        }
+    };
+
+    // Get the directory containing the markdown file
+    let watch_path = match config.markdown_path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    };
+
+    // Ensure we're using an absolute path for watching
+    let abs_watch_path = if watch_path.is_absolute() {
+        watch_path.to_path_buf()
+    } else {
+        match utils::get_absolute_path(watch_path) {
+            Ok(p) => p,
+            Err(e) => {
+                let _ = event_tx.send(WatchEvent::RegenerationFailed {
+                    error: format!("Failed to resolve watch path: {}", e),
+                });
+                return;
+            }
+        }
+    };
+
+    // Add a path to be watched
+    if let Err(e) = debouncer
+        .watcher()
+        .watch(&abs_watch_path, RecursiveMode::Recursive)
+    {
+        let _ = event_tx.send(WatchEvent::RegenerationFailed {
+            error: format!("Failed to start watching directory: {}", e),
+        });
+        return;
+    }
+
+    // Track seen events to avoid duplicate processing
+    let mut last_processed = std::time::Instant::now();
+
+    // Store previous markdown content for diffing to detect which slide changed
+    let mut previous_content = std::fs::read_to_string(&config.markdown_path).unwrap_or_default();
+
+    // Process events from the file watcher
+    for result in rx {
+        match result {
+            Ok(events) => {
+                let relevant_changes = events.iter().any(|event| {
+                    if event.paths.is_empty() {
+                        return false;
+                    }
+                    event
+                        .paths
+                        .iter()
+                        .any(|path| is_relevant_path(path, &config))
+                });
+
+                let now = std::time::Instant::now();
+                if relevant_changes
+                    && now.duration_since(last_processed)
+                        > Duration::from_millis(config.debounce_ms)
+                {
+                    // Notify about file change
+                    let _ = event_tx.send(WatchEvent::FileChanged {
+                        path: config.markdown_path.clone(),
+                        timestamp: now,
+                    });
+
+                    let _ = event_tx.send(WatchEvent::RegenerationStarted { timestamp: now });
+
+                    let regen_start = std::time::Instant::now();
+                    match regenerate_outputs(&config, app_config, ws_port) {
+                        Ok(_) => {
+                            last_processed = now;
+
+                            let new_content =
+                                std::fs::read_to_string(&config.markdown_path).unwrap_or_default();
+                            let changed_slide =
+                                diff::find_changed_slide(&previous_content, &new_content);
+                            let slide_count = diff::count_slides(&new_content);
+                            let slide_titles = diff::extract_slide_titles(&new_content);
+
+                            let _ = event_tx.send(WatchEvent::RegenerationCompleted {
+                                slide_count,
+                                slide_titles,
+                                duration_ms: regen_start.elapsed().as_millis() as u64,
+                                changed_slide,
+                            });
+
+                            // Send reload message to clients if auto-reload is enabled
+                            if let Some(ref ws_manager) = ws_manager {
+                                let reload_msg = match changed_slide {
+                                    Some(slide) => {
+                                        crate::watch_events::ReloadMessage::reload_with_focus(slide)
+                                    }
+                                    None => crate::watch_events::ReloadMessage::reload(),
+                                };
+                                ws_manager.lock().broadcast(&reload_msg.to_json());
+                            }
+
+                            previous_content = new_content;
+                        }
+                        Err(e) => {
+                            let _ = event_tx.send(WatchEvent::RegenerationFailed {
+                                error: format!("{}", e),
+                            });
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Watch error: {:?}", e);
+            }
+        }
+    }
+
+    // Cleanup WebSocket connections before exiting
+    if let Some(ws_manager) = ws_manager {
+        ws_manager.lock().cleanup();
+    }
 }

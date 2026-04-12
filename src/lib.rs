@@ -9,8 +9,8 @@ pub mod html;
 pub mod pptx;
 pub mod render;
 pub mod resources;
-pub mod utils;
 pub mod tui;
+pub mod utils;
 pub mod watch;
 pub mod watch_events;
 

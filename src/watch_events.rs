@@ -15,14 +15,9 @@ pub enum WatchEvent {
         html_output: PathBuf,
     },
     /// A file change was detected
-    FileChanged {
-        path: PathBuf,
-        timestamp: Instant,
-    },
+    FileChanged { path: PathBuf, timestamp: Instant },
     /// Regeneration started
-    RegenerationStarted {
-        timestamp: Instant,
-    },
+    RegenerationStarted { timestamp: Instant },
     /// Regeneration completed
     RegenerationCompleted {
         slide_count: usize,
@@ -31,9 +26,7 @@ pub enum WatchEvent {
         changed_slide: Option<usize>,
     },
     /// Regeneration failed
-    RegenerationFailed {
-        error: String,
-    },
+    RegenerationFailed { error: String },
     /// Server status update
     ServerStatus {
         http_port: u16,
@@ -41,9 +34,7 @@ pub enum WatchEvent {
         connected_clients: usize,
     },
     /// A WebSocket client connected or disconnected
-    ClientCountChanged {
-        count: usize,
-    },
+    ClientCountChanged { count: usize },
 }
 
 /// WebSocket message sent to browser for reload with optional slide focus

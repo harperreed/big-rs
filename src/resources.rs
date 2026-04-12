@@ -95,16 +95,19 @@ impl ResourceFile {
                 Ok(response) => {
                     if response.status().is_success() {
                         let content = response.text().map_err(BigError::FetchError)?;
-                        
+
                         // Cache the successful result
                         {
                             let mut cache = REMOTE_CACHE.lock().unwrap();
-                            cache.insert(self.path.clone(), CacheEntry {
-                                content: content.clone(),
-                                expires_at: Instant::now() + DEFAULT_CACHE_TTL,
-                            });
+                            cache.insert(
+                                self.path.clone(),
+                                CacheEntry {
+                                    content: content.clone(),
+                                    expires_at: Instant::now() + DEFAULT_CACHE_TTL,
+                                },
+                            );
                         }
-                        
+
                         return Ok(content);
                     } else {
                         let status = response.status();
@@ -184,25 +187,35 @@ mod tests {
     fn test_remote_resource_caching() {
         // Skip this test if we don't have internet connectivity
         let resource = ResourceFile::new("https://httpbin.org/json");
-        
+
         // First fetch
         let start1 = Instant::now();
         let content1 = resource.content();
         let duration1 = start1.elapsed();
-        
+
         assert!(content1.is_ok(), "First fetch should succeed");
-        
+
         // Second fetch - should be cached and faster
         let start2 = Instant::now();
         let content2 = resource.content();
         let duration2 = start2.elapsed();
-        
+
         assert!(content2.is_ok(), "Second fetch should succeed");
-        assert_eq!(content1.unwrap(), content2.unwrap(), "Content should be identical");
-        
+        assert_eq!(
+            content1.unwrap(),
+            content2.unwrap(),
+            "Content should be identical"
+        );
+
         // Cache should make second fetch significantly faster
         // (allowing some margin for system variability)
-        println!("First fetch: {:?}, Second fetch: {:?}", duration1, duration2);
-        assert!(duration2 < duration1, "Second fetch should be faster due to caching");
+        println!(
+            "First fetch: {:?}, Second fetch: {:?}",
+            duration1, duration2
+        );
+        assert!(
+            duration2 < duration1,
+            "Second fetch should be faster due to caching"
+        );
     }
 }

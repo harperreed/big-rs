@@ -3,6 +3,7 @@
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use boba::crossterm::event::{KeyCode, KeyModifiers};
 use boba::ratatui::Frame;
@@ -10,6 +11,7 @@ use boba::ratatui::layout::{Constraint, Direction, Layout};
 use boba::ratatui::style::{Color, Modifier, Style};
 use boba::ratatui::text::{Line, Span};
 use boba::ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
+use boba::tokio::sync::Mutex as TokioMutex;
 use boba::{Command, Model, Subscription, TerminalEvent, terminal_events};
 
 use crate::watch_events::WatchEvent;
@@ -22,6 +24,8 @@ pub struct DashboardFlags {
     pub initial_events: Vec<WatchEvent>,
     /// Minutes per slide for estimated presentation time
     pub minutes_per_slide: f64,
+    /// Receiver for watch events from background threads (used in dashboard mode)
+    pub event_rx: Option<boba::tokio::sync::mpsc::UnboundedReceiver<WatchEvent>>,
 }
 
 /// State for the watch mode TUI dashboard
@@ -46,6 +50,9 @@ pub struct Dashboard {
     last_regen_duration_ms: Option<u64>,
     regen_count: usize,
     last_changed_slide: Option<usize>,
+
+    // Channel receiver for watch events from background threads
+    event_rx: Option<Arc<TokioMutex<boba::tokio::sync::mpsc::UnboundedReceiver<WatchEvent>>>>,
 }
 
 /// A single entry in the activity log
@@ -166,11 +173,37 @@ impl Dashboard {
     }
 }
 
+/// Poll the next event from the watch event receiver channel
+async fn poll_event(
+    rx: Arc<TokioMutex<boba::tokio::sync::mpsc::UnboundedReceiver<WatchEvent>>>,
+) -> Option<WatchEvent> {
+    rx.lock().await.recv().await
+}
+
+/// Create a Command that polls for the next event and maps it to a Msg
+fn schedule_event_poll(
+    rx: &Option<Arc<TokioMutex<boba::tokio::sync::mpsc::UnboundedReceiver<WatchEvent>>>>,
+) -> Command<Msg> {
+    match rx {
+        Some(rx) => {
+            let rx = rx.clone();
+            Command::perform(poll_event(rx), |result| match result {
+                Some(event) => Msg::WatchEvent(event),
+                None => Msg::Noop,
+            })
+        }
+        None => Command::none(),
+    }
+}
+
 impl Model for Dashboard {
     type Message = Msg;
     type Flags = DashboardFlags;
 
     fn init(flags: DashboardFlags) -> (Self, Command<Msg>) {
+        // Wrap the receiver in an Arc<TokioMutex> for shared async access
+        let event_rx = flags.event_rx.map(|rx| Arc::new(TokioMutex::new(rx)));
+
         let mut dashboard = Dashboard {
             slide_count: 0,
             slide_titles: Vec::new(),
@@ -185,6 +218,7 @@ impl Model for Dashboard {
             last_regen_duration_ms: None,
             regen_count: 0,
             last_changed_slide: None,
+            event_rx,
         };
 
         // Process any initial events provided at startup
@@ -192,14 +226,18 @@ impl Model for Dashboard {
             dashboard.process_event(event);
         }
 
-        (dashboard, Command::none())
+        // Schedule the first event poll from the background channel
+        let cmd = schedule_event_poll(&dashboard.event_rx);
+
+        (dashboard, cmd)
     }
 
     fn update(&mut self, msg: Msg) -> Command<Msg> {
         match msg {
             Msg::WatchEvent(event) => {
                 self.process_event(event);
-                Command::none()
+                // Schedule the next poll to keep receiving events
+                schedule_event_poll(&self.event_rx)
             }
             Msg::Quit => Command::quit(),
             Msg::Noop => Command::none(),
@@ -401,4 +439,46 @@ impl Model for Dashboard {
             _ => None,
         })]
     }
+}
+
+/// Run the TUI dashboard with integrated watch mode.
+/// Creates a tokio runtime, spawns the watch backend in a std::thread,
+/// and runs the boba TUI as the foreground.
+pub fn run_dashboard(config: crate::WatchConfig, app_config: crate::Config) -> crate::Result<()> {
+    let rt = boba::tokio::runtime::Runtime::new().map_err(|e| {
+        crate::BigError::WatchError(format!("Failed to create tokio runtime: {}", e))
+    })?;
+
+    rt.block_on(async { run_dashboard_async(config, app_config).await })
+}
+
+/// Async implementation of the TUI dashboard runner
+async fn run_dashboard_async(
+    config: crate::WatchConfig,
+    app_config: crate::Config,
+) -> crate::Result<()> {
+    let (event_tx, event_rx) = boba::tokio::sync::mpsc::unbounded_channel::<WatchEvent>();
+
+    let minutes_per_slide = config.minutes_per_slide;
+
+    // Spawn the watch system in a background std::thread.
+    // The thread owns the config and app_config, running the file watcher,
+    // servers, and regeneration loop, sending events through the channel.
+    std::thread::spawn(move || {
+        crate::watch::run_watch_backend(config, &app_config, event_tx);
+    });
+
+    // Create dashboard flags with the event receiver
+    let flags = DashboardFlags {
+        initial_events: Vec::new(),
+        minutes_per_slide,
+        event_rx: Some(event_rx),
+    };
+
+    // Run the boba TUI as the foreground async task
+    boba::run::<Dashboard>(flags)
+        .await
+        .map_err(|e| crate::BigError::WatchError(format!("TUI error: {}", e)))?;
+
+    Ok(())
 }
