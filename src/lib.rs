@@ -11,6 +11,7 @@ pub mod resources;
 pub mod utils;
 pub mod tui;
 pub mod watch;
+pub mod watch_events;
 
 // Reexport common types and functions
 pub use config::Config;
@@ -20,6 +21,7 @@ pub use pptx::{PptxConfig, find_slide_images, generate_pptx};
 pub use render::{RenderConfig, generate_slides};
 pub use resources::ResourceFile;
 pub use watch::{WatchConfig, watch_markdown};
+pub use watch_events::WatchEvent;
 
 #[cfg(test)]
 mod tests;
