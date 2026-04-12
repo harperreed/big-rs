@@ -22,7 +22,7 @@ pub use pptx::{PptxConfig, find_slide_images, generate_pptx};
 pub use render::{RenderConfig, generate_slides};
 pub use resources::ResourceFile;
 pub use watch::{WatchConfig, watch_markdown};
-pub use watch_events::WatchEvent;
+pub use watch_events::{ReloadMessage, WatchEvent};
 
 #[cfg(test)]
 mod tests;

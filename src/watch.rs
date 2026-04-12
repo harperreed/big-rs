@@ -194,13 +194,41 @@ fn auto_reload_js(ws_port: u16) -> String {
         
         socket.onmessage = function(event) {{
             console.log('Received message:', event.data);
-            if (event.data === 'reload') {{
-                console.log('Reloading page...');
-                window.location.reload();
+            try {{
+                var msg = JSON.parse(event.data);
+                if (msg.action === 'reload') {{
+                    if (msg.focus_slide !== undefined && msg.focus_slide !== null) {{
+                        sessionStorage.setItem('big_focus_slide', String(msg.focus_slide));
+                    }}
+                    window.location.reload();
+                }}
+            }} catch(e) {{
+                if (event.data === 'reload') {{
+                    window.location.reload();
+                }}
             }}
         }};
     }}
-    
+
+    // Navigate to focused slide after reload
+    document.addEventListener('DOMContentLoaded', function() {{
+        var focusSlide = sessionStorage.getItem('big_focus_slide');
+        if (focusSlide !== null) {{
+            sessionStorage.removeItem('big_focus_slide');
+            var slideIndex = parseInt(focusSlide, 10);
+            var slides = document.querySelectorAll('body > div');
+            if (slideIndex >= 0 && slideIndex < slides.length) {{
+                if (typeof window.go === 'function') {{
+                    window.go(slideIndex);
+                }} else {{
+                    slides.forEach(function(s, i) {{
+                        s.style.display = i === slideIndex ? '' : 'none';
+                    }});
+                }}
+            }}
+        }}
+    }});
+
     // Start connection
     connect();
 }})();
@@ -450,6 +478,10 @@ pub fn watch_markdown(config: WatchConfig, app_config: &AppConfig) -> Result<()>
     // Track seen events to avoid duplicate processing
     let mut last_processed = std::time::Instant::now();
 
+    // Store previous markdown content for diffing to detect which slide changed
+    let mut previous_content =
+        std::fs::read_to_string(&config.markdown_path).unwrap_or_default();
+
     // Process events
     for result in rx {
         match result {
@@ -486,7 +518,22 @@ pub fn watch_markdown(config: WatchConfig, app_config: &AppConfig) -> Result<()>
 
                             // Send reload message to clients if auto-reload is enabled
                             if let Some(ref ws_manager) = ws_manager {
-                                ws_manager.lock().broadcast("reload");
+                                let new_content = std::fs::read_to_string(&config.markdown_path)
+                                    .unwrap_or_default();
+                                let changed_slide = crate::diff::find_changed_slide(
+                                    &previous_content,
+                                    &new_content,
+                                );
+                                let reload_msg = match changed_slide {
+                                    Some(slide) => {
+                                        crate::watch_events::ReloadMessage::reload_with_focus(
+                                            slide,
+                                        )
+                                    }
+                                    None => crate::watch_events::ReloadMessage::reload(),
+                                };
+                                ws_manager.lock().broadcast(&reload_msg.to_json());
+                                previous_content = new_content;
                                 info!("Sent reload signal to connected browsers");
                             }
                         }

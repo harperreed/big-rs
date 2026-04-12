@@ -46,6 +46,34 @@ pub enum WatchEvent {
     },
 }
 
+/// WebSocket message sent to browser for reload with optional slide focus
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct ReloadMessage {
+    pub action: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub focus_slide: Option<usize>,
+}
+
+impl ReloadMessage {
+    pub fn reload() -> Self {
+        Self {
+            action: "reload".to_string(),
+            focus_slide: None,
+        }
+    }
+
+    pub fn reload_with_focus(slide: usize) -> Self {
+        Self {
+            action: "reload".to_string(),
+            focus_slide: Some(slide),
+        }
+    }
+
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(self).unwrap_or_else(|_| r#"{"action":"reload"}"#.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,5 +172,29 @@ mod tests {
             }
             _ => panic!("wrong variant"),
         }
+    }
+
+    #[test]
+    fn test_reload_message_serialize() {
+        let msg = ReloadMessage::reload_with_focus(3);
+        let json = msg.to_json();
+        assert!(json.contains("\"action\":\"reload\""));
+        assert!(json.contains("\"focus_slide\":3"));
+    }
+
+    #[test]
+    fn test_reload_message_no_focus() {
+        let msg = ReloadMessage::reload();
+        let json = msg.to_json();
+        assert!(json.contains("\"action\":\"reload\""));
+        assert!(!json.contains("focus_slide"));
+    }
+
+    #[test]
+    fn test_reload_message_roundtrip() {
+        let msg = ReloadMessage::reload_with_focus(5);
+        let json = msg.to_json();
+        let deserialized: ReloadMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(msg, deserialized);
     }
 }
