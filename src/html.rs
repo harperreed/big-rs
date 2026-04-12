@@ -262,10 +262,10 @@ pub fn write_html_to_file(html_content: &str, output_path: &Path) -> Result<()> 
     info!("Writing HTML to file: {:?}", output_path);
 
     // Ensure parent directory exists
-    if let Some(parent) = output_path.parent() {
-        if !parent.exists() {
-            fs::create_dir_all(parent).map_err(BigError::FileReadError)?;
-        }
+    if let Some(parent) = output_path.parent()
+        && !parent.exists()
+    {
+        fs::create_dir_all(parent).map_err(BigError::FileReadError)?;
     }
 
     // Write the HTML content to the output file

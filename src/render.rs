@@ -60,10 +60,10 @@ pub fn generate_slides(
     // Use custom browser path if specified
     if let Some(browser_path) = &config.browser_path {
         launch_options_builder.path(Some(browser_path.into()));
-    } else if let Ok(path) = env::var("BROWSER_PATH") {
-        if !path.is_empty() {
-            launch_options_builder.path(Some(path.into()));
-        }
+    } else if let Ok(path) = env::var("BROWSER_PATH")
+        && !path.is_empty()
+    {
+        launch_options_builder.path(Some(path.into()));
     }
 
     let launch_options = launch_options_builder

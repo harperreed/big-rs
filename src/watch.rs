@@ -220,24 +220,31 @@ fn auto_reload_js(ws_port: u16) -> String {
         }};
     }}
 
-    // Navigate to focused slide after reload
-    document.addEventListener('DOMContentLoaded', function() {{
+    // Navigate to focused slide after reload.
+    // big.js initializes on window.onload and exposes window.big.go(),
+    // so we poll until it exists rather than using DOMContentLoaded.
+    function applyFocusSlide() {{
         var focusSlide = sessionStorage.getItem('big_focus_slide');
-        if (focusSlide !== null) {{
-            sessionStorage.removeItem('big_focus_slide');
-            var slideIndex = parseInt(focusSlide, 10);
-            var slides = document.querySelectorAll('body > div');
-            if (slideIndex >= 0 && slideIndex < slides.length) {{
-                if (typeof window.go === 'function') {{
-                    window.go(slideIndex);
-                }} else {{
-                    slides.forEach(function(s, i) {{
-                        s.style.display = i === slideIndex ? '' : 'none';
-                    }});
-                }}
+        if (focusSlide === null) return;
+
+        function tryNavigate() {{
+            if (window.big && typeof window.big.go === 'function') {{
+                sessionStorage.removeItem('big_focus_slide');
+                var slideIndex = parseInt(focusSlide, 10);
+                window.big.go(slideIndex);
+            }} else {{
+                requestAnimationFrame(tryNavigate);
             }}
         }}
-    }});
+        requestAnimationFrame(tryNavigate);
+    }}
+
+    // Run after page load to ensure big.js has had a chance to init
+    if (document.readyState === 'complete') {{
+        applyFocusSlide();
+    }} else {{
+        window.addEventListener('load', applyFocusSlide);
+    }}
 
     // Start connection
     connect();
@@ -509,15 +516,13 @@ pub fn watch_markdown(config: WatchConfig, app_config: &AppConfig) -> Result<()>
                     }
 
                     // DebouncedEvent has paths (multiple) instead of path
-                    let relevant_paths = event.paths.iter().any(|path| {
+                    event.paths.iter().any(|path| {
                         let is_relevant = is_relevant_path(path, &config);
                         if is_relevant {
                             debug!("Detected relevant change in {:?}", path);
                         }
                         is_relevant
-                    });
-
-                    relevant_paths
+                    })
                 });
 
                 // Only regenerate if there are relevant changes and enough time has passed

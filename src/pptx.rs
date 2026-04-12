@@ -38,10 +38,10 @@ pub fn generate_pptx(slides_dir: &Path, output_file: &Path, config: &PptxConfig)
     }
 
     // Ensure parent directory for output file exists
-    if let Some(parent) = output_file.parent() {
-        if !parent.exists() {
-            fs::create_dir_all(parent).map_err(BigError::FileReadError)?;
-        }
+    if let Some(parent) = output_file.parent()
+        && !parent.exists()
+    {
+        fs::create_dir_all(parent).map_err(BigError::FileReadError)?;
     }
 
     // Collect all slide image files matching the pattern
