@@ -179,8 +179,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse command line arguments
     let cli = Cli::parse();
 
-    // Initialize logger
-    let log_level = if cli.verbose {
+    // Check if TUI mode is active (suppresses terminal logging since the TUI replaces it)
+    let tui_active = matches!(&cli.command, Some(Commands::Watch(args)) if args.tui);
+
+    // Initialize logger (disabled in TUI mode to avoid corrupting the terminal UI)
+    let log_level = if tui_active {
+        log::LevelFilter::Off
+    } else if cli.verbose {
         log::LevelFilter::Debug
     } else {
         log::LevelFilter::Info

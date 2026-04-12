@@ -257,6 +257,7 @@ fn start_server(
     port: u16,
     auto_reload: bool,
     ws_port: Option<u16>,
+    quiet: bool,
 ) -> Result<ServerResponse> {
     // Start HTTP server
     let server = Server::http(format!("0.0.0.0:{}", port))
@@ -290,10 +291,12 @@ fn start_server(
                         "WebSocket server for auto-reload listening on port {}",
                         ws_port
                     );
-                    println!(
-                        "WebSocket server for auto-reload listening on port {}",
-                        ws_port
-                    );
+                    if !quiet {
+                        println!(
+                            "WebSocket server for auto-reload listening on port {}",
+                            ws_port
+                        );
+                    }
 
                     // Set the listener to non-blocking mode to avoid freezing on accept
                     if let Err(e) = listener.set_nonblocking(true) {
@@ -339,7 +342,9 @@ fn start_server(
     // Start HTTP server in a separate thread
     thread::spawn(move || {
         info!("HTTP server listening on http://localhost:{}", port);
-        println!("HTTP server listening on http://localhost:{}", port);
+        if !quiet {
+            println!("HTTP server listening on http://localhost:{}", port);
+        }
 
         for request in server_thread.incoming_requests() {
             let url_path = request.url();
@@ -439,6 +444,7 @@ pub fn watch_markdown(config: WatchConfig, app_config: &AppConfig) -> Result<()>
             config.port,
             config.auto_reload,
             ws_port,
+            false,
         )?;
         manager
     } else {
@@ -739,6 +745,7 @@ pub(crate) fn run_watch_backend(
             config.port,
             config.auto_reload,
             ws_port,
+            true,
         ) {
             Ok((_server, manager)) => {
                 let _ = event_tx.send(WatchEvent::ServerStatus {
