@@ -3,6 +3,7 @@
 
 // Reexport modules
 pub mod config;
+pub mod diff;
 pub mod errors;
 pub mod html;
 pub mod pptx;
