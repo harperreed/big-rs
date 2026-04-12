@@ -6,13 +6,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use boba::crossterm::event::{KeyCode, KeyModifiers};
-use boba::ratatui::Frame;
 use boba::ratatui::layout::{Constraint, Direction, Layout};
 use boba::ratatui::style::{Color, Modifier, Style};
 use boba::ratatui::text::{Line, Span};
 use boba::ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
+use boba::ratatui::Frame;
 use boba::tokio::sync::Mutex as TokioMutex;
-use boba::{Command, Model, Subscription, TerminalEvent, terminal_events};
+use boba::{terminal_events, Command, Model, Subscription, TerminalEvent};
 
 use crate::watch_events::WatchEvent;
 

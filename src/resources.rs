@@ -70,11 +70,12 @@ impl ResourceFile {
         // First check the cache
         {
             let cache = REMOTE_CACHE.lock().unwrap();
-            if let Some(entry) = cache.get(&self.path)
-                && Instant::now() < entry.expires_at
-            {
-                info!("Using cached remote resource: {}", self.path);
-                return Ok(entry.content.clone());
+            #[allow(clippy::collapsible_if)]
+            if let Some(entry) = cache.get(&self.path) {
+                if Instant::now() < entry.expires_at {
+                    info!("Using cached remote resource: {}", self.path);
+                    return Ok(entry.content.clone());
+                }
             }
         }
 

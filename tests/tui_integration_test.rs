@@ -1,8 +1,8 @@
 // ABOUTME: Integration tests for TUI dashboard features
 // ABOUTME: Tests diff module, reload messages, and watch event communication
 
-use big::diff;
-use big::watch_events::{ReloadMessage, WatchEvent};
+use big_slides::diff;
+use big_slides::watch_events::{ReloadMessage, WatchEvent};
 use std::path::PathBuf;
 use std::time::Instant;
 

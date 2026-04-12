@@ -1,0 +1,3 @@
+[default.extend-words]
+# ratatui is the name of a Rust TUI library, not a typo of "ratatouille"
+ratatui = "ratatui"

@@ -3,7 +3,7 @@
 
 use crate::errors::{BigError, Result};
 use crate::resources::ResourceFile;
-use comrak::{ComrakOptions, markdown_to_html};
+use comrak::{markdown_to_html, ComrakOptions};
 use log::info;
 use std::fs;
 use std::path::Path;
@@ -262,10 +262,11 @@ pub fn write_html_to_file(html_content: &str, output_path: &Path) -> Result<()> 
     info!("Writing HTML to file: {:?}", output_path);
 
     // Ensure parent directory exists
-    if let Some(parent) = output_path.parent()
-        && !parent.exists()
-    {
-        fs::create_dir_all(parent).map_err(BigError::FileReadError)?;
+    #[allow(clippy::collapsible_if)]
+    if let Some(parent) = output_path.parent() {
+        if !parent.exists() {
+            fs::create_dir_all(parent).map_err(BigError::FileReadError)?;
+        }
     }
 
     // Write the HTML content to the output file
