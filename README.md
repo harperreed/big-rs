@@ -13,8 +13,11 @@ A Rust-based tool for generating professional PowerPoint presentations from Mark
 - **JavaScript Support**: Add interactivity with custom JS
 - **Efficient Pipeline**: Generate presentations in a three-step process
 - **Local and Remote Resources**: Include local files or remote URLs for CSS/JS
+- **Remote Resource Caching**: TTL-based caching for remote CSS/JS resources to improve watch mode performance
 - **Customizable Output**: Control image dimensions, format, and naming
 - **Complete PPTX Generation**: Creates fully-functional PowerPoint files
+- **TUI Dashboard**: Interactive terminal dashboard for watch mode (`--tui` flag) with live status, slide info, and event log
+- **Scroll-to-Edit**: In watch mode, the browser preview automatically scrolls to the slide you are editing
 
 ## Installation
 
@@ -36,17 +39,17 @@ cd big-slides
 # Build the project
 cargo build --release
 
-# The binary will be available at target/release/big
+# The binary will be available at target/release/big-slides
 ```
 
 ### Verifying Installation
 
 ```bash
 # Display help
-./target/release/big --help
+./target/release/big-slides --help
 
 # Check version
-./target/release/big --version
+./target/release/big-slides --version
 ```
 
 ## Usage
@@ -56,7 +59,7 @@ Big-Slides provides three main commands that can be used separately or in sequen
 ### 1. Generate HTML from Markdown
 
 ```bash
-big generate-html -i input.md -o output.html [--css style1.css,style2.css] [--js script1.js,script2.js]
+big-slides generate-html -i input.md -o output.html [--css style1.css,style2.css] [--js script1.js,script2.js]
 ```
 
 #### Options
@@ -71,16 +74,16 @@ big generate-html -i input.md -o output.html [--css style1.css,style2.css] [--js
 
 ```bash
 # Basic usage
-big generate-html -i presentation.md -o presentation.html
+big-slides generate-html -i presentation.md -o presentation.html
 
 # With custom styling
-big generate-html -i presentation.md -o presentation.html --css style.css --js navigation.js
+big-slides generate-html -i presentation.md -o presentation.html --css style.css --js navigation.js
 ```
 
 ### 2. Generate Slides from HTML
 
 ```bash
-big generate-slides -i presentation.html -o slides_directory [--base-name slide] [--format png] [--width 1280] [--height 720]
+big-slides generate-slides -i presentation.html -o slides_directory [--base-name slide] [--format png] [--width 1920] [--height 1080]
 ```
 
 #### Options
@@ -89,23 +92,23 @@ big generate-slides -i presentation.html -o slides_directory [--base-name slide]
 - `-o, --output-dir`: Directory to output slide images
 - `--base-name`: Base filename for slides (default: "slide")
 - `--format`: Format for the slide images (default: "png")
-- `--width`: Width of the slides in pixels (default: 1280)
-- `--height`: Height of the slides in pixels (default: 720)
+- `--width`: Width of the slides in pixels (default: 1920)
+- `--height`: Height of the slides in pixels (default: 1080)
 
 #### Example
 
 ```bash
 # Basic usage
-big generate-slides -i presentation.html -o ./slides
+big-slides generate-slides -i presentation.html -o ./slides
 
 # With custom dimensions and format
-big generate-slides -i presentation.html -o ./slides --width 1920 --height 1080 --format png
+big-slides generate-slides -i presentation.html -o ./slides --width 1920 --height 1080 --format png
 ```
 
 ### 3. Generate PPTX from Slides
 
 ```bash
-big generate-pptx -i slides_directory -o presentation.pptx [--pattern "*.png"] [--title "My Presentation"]
+big-slides generate-pptx -i slides_directory -o presentation.pptx [--pattern "*.png"] [--title "My Presentation"]
 ```
 
 #### Options
@@ -119,10 +122,10 @@ big generate-pptx -i slides_directory -o presentation.pptx [--pattern "*.png"] [
 
 ```bash
 # Basic usage
-big generate-pptx -i ./slides -o presentation.pptx
+big-slides generate-pptx -i ./slides -o presentation.pptx
 
 # With custom title and pattern
-big generate-pptx -i ./slides -o presentation.pptx --title "Quarterly Report" --pattern "slide_*.png"
+big-slides generate-pptx -i ./slides -o presentation.pptx --title "Quarterly Report" --pattern "slide_*.png"
 ```
 
 ## Full Pipeline Example
@@ -181,13 +184,13 @@ h1 {
 EOF
 
 # 1. Convert markdown to HTML with your style
-big generate-html -i slides.md -o slides.html --css style.css
+big-slides generate-html -i slides.md -o slides.html --css style.css
 
 # 2. Render HTML to slide images
-big generate-slides -i slides.html -o ./slide_images --width 1920 --height 1080
+big-slides generate-slides -i slides.html -o ./slide_images --width 1920 --height 1080
 
 # 3. Create PPTX from slides
-big generate-pptx -i ./slide_images -o presentation.pptx --title "My Big Presentation"
+big-slides generate-pptx -i ./slide_images -o presentation.pptx --title "My Big Presentation"
 
 # Open the presentation
 open presentation.pptx  # On macOS
@@ -294,12 +297,12 @@ You can add JavaScript to control slide navigation (especially useful if you wan
 document.addEventListener('DOMContentLoaded', function() {
   const slides = document.querySelectorAll('.slides > div');
   let currentSlide = 0;
-  
+
   // Hide all slides except the first one
   for (let i = 1; i < slides.length; i++) {
     slides[i].style.display = 'none';
   }
-  
+
   // Add keyboard navigation
   document.addEventListener('keydown', function(e) {
     if (e.key === 'ArrowRight' && currentSlide < slides.length - 1) {
@@ -320,7 +323,7 @@ document.addEventListener('DOMContentLoaded', function() {
 ### Project Structure
 
 ```
-big/
+big-slides/
 ├── src/
 │   ├── main.rs    # CLI interface and command handling
 │   ├── lib.rs     # Core functionality implementation
