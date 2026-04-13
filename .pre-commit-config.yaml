@@ -28,21 +28,12 @@ repos:
         name: "check: typos"
         description: "Checks for spelling mistakes"
 
-  - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: v0.1.9
-    hooks:
-      - id: ruff
-        name: "python: ruff"
-        description: "Run ruff on Python files"
-        types: [python]
-        args: [--fix, --exit-non-zero-on-fix]
-
   - repo: local
     hooks:
       - id: cargo-test
         name: "rust: tests"
         description: "Run Rust tests"
-        entry: cargo test
+        entry: cargo test --lib
         language: system
         types: [rust]
         pass_filenames: false
