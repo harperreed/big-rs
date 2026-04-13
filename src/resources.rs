@@ -69,7 +69,7 @@ impl ResourceFile {
     fn fetch_remote_content(&self) -> Result<String> {
         // First check the cache
         {
-            let cache = REMOTE_CACHE.lock().unwrap();
+            let cache = REMOTE_CACHE.lock().unwrap_or_else(|e| e.into_inner());
             #[allow(clippy::collapsible_if)]
             if let Some(entry) = cache.get(&self.path) {
                 if Instant::now() < entry.expires_at {
@@ -99,7 +99,7 @@ impl ResourceFile {
 
                         // Cache the successful result
                         {
-                            let mut cache = REMOTE_CACHE.lock().unwrap();
+                            let mut cache = REMOTE_CACHE.lock().unwrap_or_else(|e| e.into_inner());
                             cache.insert(
                                 self.path.clone(),
                                 CacheEntry {

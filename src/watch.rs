@@ -5,6 +5,7 @@ use log::{debug, error, info};
 use std::fs;
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Duration;
@@ -112,6 +113,8 @@ type WatchDebouncer = Debouncer<notify::PollWatcher, notify_debouncer_full::File
 /// Structure to manage active WebSocket connections
 struct WebSocketManager {
     connections: Vec<WebSocketConnection>,
+    /// Flag to signal the WebSocket accept loop to shut down
+    shutdown: Arc<AtomicBool>,
 }
 
 /// Represents a single WebSocket connection
@@ -123,6 +126,7 @@ impl WebSocketManager {
     fn new() -> Self {
         WebSocketManager {
             connections: Vec::new(),
+            shutdown: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -178,6 +182,8 @@ impl WebSocketManager {
 
     /// Cleanup and prepare for shutdown
     fn cleanup(&mut self) {
+        // Signal the accept loop thread to stop
+        self.shutdown.store(true, Ordering::SeqCst);
         for connection in &mut self.connections {
             let _ = connection.connection.close(None);
         }
@@ -303,6 +309,7 @@ fn start_server(
         // Create WebSocket manager
         let ws_manager = Arc::new(Mutex::new(WebSocketManager::new()));
         let ws_thread_manager = ws_manager.clone();
+        let shutdown_flag = ws_manager.lock().shutdown.clone();
 
         // Start WebSocket server in a separate thread
         thread::spawn(move || {
@@ -330,6 +337,12 @@ fn start_server(
 
                     // Accept connections with proper handling of would-block errors
                     loop {
+                        // Check if we've been asked to shut down
+                        if shutdown_flag.load(Ordering::SeqCst) {
+                            info!("WebSocket accept loop shutting down");
+                            break;
+                        }
+
                         match listener.accept() {
                             Ok((stream, addr)) => {
                                 debug!("New WebSocket connection from {}", addr);
@@ -545,6 +558,12 @@ pub fn watch_markdown(config: WatchConfig, app_config: &AppConfig) -> Result<()>
                     && now.duration_since(last_processed)
                         > Duration::from_millis(config.debounce_ms)
                 {
+                    // Read the markdown content BEFORE regeneration to avoid a
+                    // TOCTOU race where the file could change between regeneration
+                    // and the subsequent read used for diffing.
+                    let new_content =
+                        std::fs::read_to_string(&config.markdown_path).unwrap_or_default();
+
                     match regenerate_outputs(&config, app_config, ws_port) {
                         Ok(_) => {
                             info!("Regenerated outputs successfully");
@@ -552,8 +571,6 @@ pub fn watch_markdown(config: WatchConfig, app_config: &AppConfig) -> Result<()>
 
                             // Send reload message to clients if auto-reload is enabled
                             if let Some(ref ws_manager) = ws_manager {
-                                let new_content = std::fs::read_to_string(&config.markdown_path)
-                                    .unwrap_or_default();
                                 let changed_slide = crate::diff::find_changed_slide(
                                     &previous_content,
                                     &new_content,
@@ -565,9 +582,9 @@ pub fn watch_markdown(config: WatchConfig, app_config: &AppConfig) -> Result<()>
                                     None => crate::watch_events::ReloadMessage::reload(),
                                 };
                                 ws_manager.lock().broadcast(&reload_msg.to_json());
-                                previous_content = new_content;
                                 info!("Sent reload signal to connected browsers");
                             }
+                            previous_content = new_content;
                         }
                         Err(e) => error!("Failed to regenerate outputs: {}", e),
                     }
@@ -864,13 +881,17 @@ pub(crate) fn run_watch_backend(
 
                     let _ = event_tx.send(WatchEvent::RegenerationStarted { timestamp: now });
 
+                    // Read the markdown content BEFORE regeneration to avoid a
+                    // TOCTOU race where the file could change between regeneration
+                    // and the subsequent read used for diffing.
+                    let new_content =
+                        std::fs::read_to_string(&config.markdown_path).unwrap_or_default();
+
                     let regen_start = std::time::Instant::now();
                     match regenerate_outputs(&config, app_config, ws_port) {
                         Ok(_) => {
                             last_processed = now;
 
-                            let new_content =
-                                std::fs::read_to_string(&config.markdown_path).unwrap_or_default();
                             let changed_slide =
                                 diff::find_changed_slide(&previous_content, &new_content);
                             let slide_count = diff::count_slides(&new_content);
