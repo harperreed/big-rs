@@ -249,6 +249,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
+/// Build a Vec of ResourceFile from optional CLI args, falling back to a config default.
+/// Used by both `generate_html` and `watch` to avoid duplicating the same construction logic.
+fn build_resource_files(
+    cli_files: Option<&Vec<String>>,
+    default_value: &str,
+    resource_label: &str,
+) -> Vec<big_slides::ResourceFile> {
+    match cli_files {
+        Some(files) if !files.is_empty() => files
+            .iter()
+            .map(|path| big_slides::ResourceFile::new(path))
+            .collect(),
+        _ => {
+            info!(
+                "No {} files specified, using default {}: {}",
+                resource_label, resource_label, default_value
+            );
+            vec![big_slides::ResourceFile::new(default_value)]
+        }
+    }
+}
+
 /// Execute the generate-html command
 fn generate_html(args: &GenerateHtmlArgs, config: &big_slides::Config) -> BigResult<()> {
     info!("Executing generate-html command...");
@@ -262,43 +284,9 @@ fn generate_html(args: &GenerateHtmlArgs, config: &big_slides::Config) -> BigRes
     // Parse mode flag
     let embed_resources = args.mode.to_lowercase() != "link";
 
-    // Convert CSS files to ResourceFile structs
-    let css_files: Vec<big_slides::ResourceFile> = match args.css.as_ref() {
-        Some(files) if !files.is_empty() => {
-            // User-specified CSS files
-            files
-                .iter()
-                .map(|path| big_slides::ResourceFile::new(path))
-                .collect()
-        }
-        _ => {
-            // No CSS specified, use default
-            info!(
-                "No CSS files specified, using default CSS: {}",
-                config.default_css
-            );
-            vec![big_slides::ResourceFile::new(&config.default_css)]
-        }
-    };
-
-    // Convert JS files to ResourceFile structs
-    let js_files: Vec<big_slides::ResourceFile> = match args.js.as_ref() {
-        Some(files) if !files.is_empty() => {
-            // User-specified JS files
-            files
-                .iter()
-                .map(|path| big_slides::ResourceFile::new(path))
-                .collect()
-        }
-        _ => {
-            // No JS specified, use default
-            info!(
-                "No JavaScript files specified, using default JS: {}",
-                config.default_js
-            );
-            vec![big_slides::ResourceFile::new(&config.default_js)]
-        }
-    };
+    // Build resource files from CLI args or config defaults
+    let css_files = build_resource_files(args.css.as_ref(), &config.default_css, "CSS");
+    let js_files = build_resource_files(args.js.as_ref(), &config.default_js, "JavaScript");
 
     // Generate HTML content
     let html_content =
@@ -402,43 +390,9 @@ fn watch(args: &WatchArgs, config: &big_slides::Config) -> BigResult<()> {
     // Parse mode flag
     let embed_resources = args.mode.to_lowercase() != "link";
 
-    // Convert CSS files to ResourceFile structs
-    let css_files: Vec<big_slides::ResourceFile> = match args.css.as_ref() {
-        Some(files) if !files.is_empty() => {
-            // User-specified CSS files
-            files
-                .iter()
-                .map(|path| big_slides::ResourceFile::new(path))
-                .collect()
-        }
-        _ => {
-            // No CSS specified, use default
-            info!(
-                "No CSS files specified, using default CSS: {}",
-                config.default_css
-            );
-            vec![big_slides::ResourceFile::new(&config.default_css)]
-        }
-    };
-
-    // Convert JS files to ResourceFile structs
-    let js_files: Vec<big_slides::ResourceFile> = match args.js.as_ref() {
-        Some(files) if !files.is_empty() => {
-            // User-specified JS files
-            files
-                .iter()
-                .map(|path| big_slides::ResourceFile::new(path))
-                .collect()
-        }
-        _ => {
-            // No JS specified, use default
-            info!(
-                "No JavaScript files specified, using default JS: {}",
-                config.default_js
-            );
-            vec![big_slides::ResourceFile::new(&config.default_js)]
-        }
-    };
+    // Build resource files from CLI args or config defaults
+    let css_files = build_resource_files(args.css.as_ref(), &config.default_css, "CSS");
+    let js_files = build_resource_files(args.js.as_ref(), &config.default_js, "JavaScript");
 
     // Auto-enable serve and auto-reload when TUI is active
     let serve = args.serve || args.tui;
