@@ -1,3 +1,5 @@
+# ABOUTME: CI workflow that runs Clippy linting on pull requests.
+# ABOUTME: Ensures code quality by treating all Clippy warnings as errors.
 name: Rust Lints
 
 on:
@@ -13,29 +15,15 @@ jobs:
     name: Run Clippy linting
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
+      - uses: actions/checkout@v4
+
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
           components: clippy
-      
+
       - name: Cache dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-      
+        uses: Swatinem/rust-cache@v2
+
       - name: Clippy check
-        uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: -- -D warnings
+        run: cargo clippy -- -D warnings

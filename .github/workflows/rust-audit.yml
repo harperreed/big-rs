@@ -1,3 +1,5 @@
+# ABOUTME: CI workflow that runs cargo-audit to check for known security vulnerabilities.
+# ABOUTME: Triggers on schedule (weekly), and on changes to Cargo.toml or Cargo.lock.
 name: Security Audit
 
 on:
@@ -17,19 +19,13 @@ jobs:
     name: Audit dependencies
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Install cargo-audit
         run: cargo install cargo-audit
-      
+
       - name: Run security audit
-        uses: actions-rs/cargo@v1
-        with:
-          command: audit
+        run: cargo audit

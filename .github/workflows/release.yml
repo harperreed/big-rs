@@ -1,3 +1,5 @@
+# ABOUTME: CI workflow that creates GitHub releases and publishes to crates.io.
+# ABOUTME: Triggers when Cargo.toml version changes on push to main.
 name: Release
 
 on:
@@ -15,7 +17,7 @@ jobs:
             version_changed: ${{ steps.check-version.outputs.changed }}
         steps:
             - name: Checkout code
-              uses: actions/checkout@v3
+              uses: actions/checkout@v4
               with:
                   fetch-depth: 2
 
@@ -36,13 +38,13 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - name: Checkout code
-              uses: actions/checkout@v3
+              uses: actions/checkout@v4
 
             - name: Set up Rust
-              uses: actions-rs/toolchain@v1
-              with:
-                  toolchain: stable
-                  override: true
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: Cache dependencies
+              uses: Swatinem/rust-cache@v2
 
             - name: Build
               run: cargo build --release
@@ -59,7 +61,7 @@ jobs:
                   git push origin "v$VERSION"
 
             - name: Create GitHub Release
-              uses: softprops/action-gh-release@v1
+              uses: softprops/action-gh-release@v2
               with:
                   tag_name: v${{ needs.check-version.outputs.version }}
                   name: Release v${{ needs.check-version.outputs.version }}
